@@ -1,31 +1,35 @@
-#Following your development plan's "Qdrant-First Strategy", your script should:
+# Following your development plan's "Qdrant-First Strategy", your script should:
 #  - Load the same medical data (6000 docs you already have)
 #  - Generate embeddings using the same model as your course example (sentence-transformers/all-MiniLM-L6-v2)
 #  - Store vectors with metadata (source_type, title, text, etc.)
 #  - Handle the triple-source tagging (wikipedia/textbook/pubmed)
+import hashlib
 import json
+import os
+import time
 import uuid
+from typing import Dict, Iterable, List
 
 import numpy as np
 from qdrant_client import QdrantClient, models
-import os, json, hashlib
-from typing import List, Dict, Iterable
+from qdrant_client.models import Distance, PointStruct, VectorParams
 from sentence_transformers import SentenceTransformer
-from qdrant_client.models import Distance, VectorParams, PointStruct
 from tqdm.auto import tqdm
-import time
+
 
 def load_json_array(path: str) -> List[Dict]:
     with open(path, "r", encoding="utf-8") as f:
         return json.load(f)
 
+
 def embed_title_plus_text(title: str, text: str) -> List[float]:
-    #Creates document embeddings with the same model you’ll use for queries
+    # Creates document embeddings with the same model you’ll use for queries
     combo = (title or "").strip()
     if text:
         combo = (combo + "\n\n" + text).strip() if combo else text
     vec = model.encode([combo], normalize_embeddings=True)[0]
     return vec.tolist() if isinstance(vec, np.ndarray) else vec
+
 
 def iter_docs() -> Iterable[Dict]:
     """
@@ -41,7 +45,10 @@ def iter_docs() -> Iterable[Dict]:
                 # Optional: stable fallback if id is missing
                 # import hashlib at top if you use this
                 import hashlib
-                _id = hashlib.sha1(f"{source_type}:{d.get('title', '')}".encode("utf-8")).hexdigest()[:16]
+
+                _id = hashlib.sha1(
+                    f"{source_type}:{d.get('title', '')}".encode("utf-8")
+                ).hexdigest()[:16]
 
             yield {
                 "id": f"{source_type}:{_id}" if PREFIX_IDS else _id,
@@ -64,17 +71,20 @@ def creat_collection(client: QdrantClient):
             "bm25": models.SparseVectorParams(
                 modifier=models.Modifier.IDF,
             )
-        }
+        },
     )
+
 
 def recreate_collection(client: QdrantClient):
     # recreate the collection
-    print(f"🧰 (Re)creating Qdrant collection '{COLLECTION_NAME}' [dense 384, cosine]...", flush=True)
+    print(
+        f"🧰 (Re)creating Qdrant collection '{COLLECTION_NAME}' [dense 384, cosine]...",
+        flush=True,
+    )
     client.recreate_collection(
         collection_name=COLLECTION_NAME,
         vectors_config=VectorParams(size=384, distance=Distance.COSINE),
     )
-
 
 
 def upsert_all(client: QdrantClient, batch_size: int = 512):
@@ -111,12 +121,17 @@ if __name__ == "__main__":
 
     SOURCES = [
         # ("/Users/jordanharris/Code/wiki_rag/data/small_seed/medical_wiki_seed_small.json",     "wikipedia"),
-        ("/Users/jordanharris/Code/wiki_rag/data/small_seed/medical_textbook_seed_small.json", "textbook"),
-        ("/Users/jordanharris/Code/wiki_rag/data/small_seed/medical_pubmed_seed_small.json", "pubmed"),
+        (
+            "/Users/jordanharris/Code/wiki_rag/data/small_seed/medical_textbook_seed_small.json",
+            "textbook",
+        ),
+        (
+            "/Users/jordanharris/Code/wiki_rag/data/small_seed/medical_pubmed_seed_small.json",
+            "pubmed",
+        ),
     ]
 
     PREFIX_IDS = False
-
 
     t_start = time.time()
     print("🔧 Initializing...", flush=True)

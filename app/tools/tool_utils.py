@@ -3,7 +3,6 @@ import os
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 
 
-
 def chunk_text(document, max_tokens=1000, overlap=200):
     """
     Simple chunker: split by headings/blank lines then merge small parts.
@@ -12,12 +11,10 @@ def chunk_text(document, max_tokens=1000, overlap=200):
     # The splitter will try to split by double newline (paragraph), then newline, then space, then as last resort character.
     """
     text_splitter = RecursiveCharacterTextSplitter.from_tiktoken_encoder(
-        chunk_size = max_tokens,
-        chunk_overlap = overlap,
-        separators = ["\n\n", "\n", " ", ""],
-        keep_separator=False
+        chunk_size=max_tokens,
+        chunk_overlap=overlap,
+        separators=["\n\n", "\n", " ", ""],
+        keep_separator=False,
     )
     chunks = text_splitter.split_text(document)
     return chunks
-
-

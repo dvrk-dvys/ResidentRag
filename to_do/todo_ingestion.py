@@ -1,4 +1,4 @@
-#This directory should contain reusable, production-ready ingestion modules that your main application uses:
+# This directory should contain reusable, production-ready ingestion modules that your main application uses:
 
 #  src/ingestion/
 #  ├── __init__.py
@@ -35,7 +35,7 @@
 #  implementations.
 
 
-#Yes, exactly! After you finish the Qdrant ingestion, you should move straight into the Triple Search Implementation to stay on
+# Yes, exactly! After you finish the Qdrant ingestion, you should move straight into the Triple Search Implementation to stay on
 #  Day 1 schedule.
 
 #  Next Steps (Afternoon 1-5pm):
@@ -77,51 +77,49 @@
 
 #  Focus on: Does it work? Can I get different results from the 3 methods? Can I generate answers?
 
-#docker compose down -v
-#rm -rf ./esdata ./qdrant_storage
-#docker compose up -d
+# docker compose down -v
+# rm -rf ./esdata ./qdrant_storage
+# docker compose up -d
 
 
+# Short answer: your plan is totally realistic. On-demand Wikipedia is how lots of production RAG systems handle “long tail” facts without bloating the index. With local embeddings (MiniLM) it’s fast enough if you chunk sensibly and cache.
 
+# What the latency looks like (typical)
 
-#Short answer: your plan is totally realistic. On-demand Wikipedia is how lots of production RAG systems handle “long tail” facts without bloating the index. With local embeddings (MiniLM) it’s fast enough if you chunk sensibly and cache.
+# Fetch wiki page (REST API): 100–500 ms
 
-#What the latency looks like (typical)
+# Parse & chunk (e.g., 500–800 tokens, 20–40% overlap): ~50–150 ms
 
-#Fetch wiki page (REST API): 100–500 ms
+# Embed chunks locally (MiniLM on CPU, 20–80 chunks): 0.5–2.5 s
 
-#Parse & chunk (e.g., 500–800 tokens, 20–40% overlap): ~50–150 ms
+# Upsert to Qdrant (+ ES doc + vector): < 0.5 s
 
-#Embed chunks locally (MiniLM on CPU, 20–80 chunks): 0.5–2.5 s
+# Re-run retrieval: < 200 ms
 
-#Upsert to Qdrant (+ ES doc + vector): < 0.5 s
+# End-to-end: usually 1.5–4 s for a big page; often less for smaller pages. That’s interactive.
 
-#Re-run retrieval: < 200 ms
+# Make it robust (simple rules)
 
-#End-to-end: usually 1.5–4 s for a big page; often less for smaller pages. That’s interactive.
+# Chunk before embedding (don’t embed full pages).
 
-#Make it robust (simple rules)
+# Cache: keep a tiny KV (e.g., SQLite or Redis) from title → {chunks, doc_ids, timestamp}.
+# Reuse if asked again within, say, 7 days.
 
-#Chunk before embedding (don’t embed full pages).
+# ID scheme: wikipedia:<slug>#c0001 … so upserts are idempotent and Hybrid works (same IDs in ES and in Qdrant payloads).
 
-#Cache: keep a tiny KV (e.g., SQLite or Redis) from title → {chunks, doc_ids, timestamp}.
-#Reuse if asked again within, say, 7 days.
+# Guardrail: only enrich when needed, e.g. if top1_qdrant_score < 0.45 or no hits from ES.
 
-#ID scheme: wikipedia:<slug>#c0001 … so upserts are idempotent and Hybrid works (same IDs in ES and in Qdrant payloads).
-
-#Guardrail: only enrich when needed, e.g. if top1_qdrant_score < 0.45 or no hits from ES.
-
-#Minimal enrich flow (pseudocode you can drop in)
-#def maybe_enrich_with_wikipedia(query, qdrant_hits, es_hits):
+# Minimal enrich flow (pseudocode you can drop in)
+# def maybe_enrich_with_wikipedia(query, qdrant_hits, es_hits):
 #    need = (not qdrant_hits) or (qdrant_hits[0].score < 0.45) or (not es_hits)
 #    if not need:
 #        return False, []
-    # 1) fetch text (lead + 2–3 sections)
+# 1) fetch text (lead + 2–3 sections)
 #    title, text = fetch_wiki_best_match(query)  # use Wikipedia search API
 #    if not text: return False, []
-    # 2) chunk
+# 2) chunk
 #    chunks = chunk_text(title, text, max_tokens=700, overlap=120)
-    # 3) build docs with consistent IDs
+# 3) build docs with consistent IDs
 #    docs = [
 #        {
 #          "id": f"wikipedia:{slug(title)}#c{ix:04d}",
@@ -132,27 +130,27 @@
 #        }
 #        for ix, chunk_text in enumerate(chunks)
 #    ]
-    # 4) upsert to Qdrant + index to ES (compute same MiniLM embeddings)
+# 4) upsert to Qdrant + index to ES (compute same MiniLM embeddings)
 #    upsert_qdrant_batch(docs)   # vector=MiniLM(title+"\n\n"+text)
 #    index_es_batch(docs)        # doc + text_vector field
 #    return True, [d["id"] for d in docs]
 
 
-#(You already have upsert_qdrant/index_es patterns; just reuse them here.)
+# (You already have upsert_qdrant/index_es patterns; just reuse them here.)
 
-#When you might feel it’s “too slow”
+# When you might feel it’s “too slow”
 
-#Very long pages (hundreds of KB). Fix: limit to lead + first N sections or top 10 sections by TF-IDF relevance to the query before embedding.
+# Very long pages (hundreds of KB). Fix: limit to lead + first N sections or top 10 sections by TF-IDF relevance to the query before embedding.
 
-#Many enriches back-to-back. Fix: cache and rate-limit (Wikipedia asks for polite usage + a User-Agent string).
+# Many enriches back-to-back. Fix: cache and rate-limit (Wikipedia asks for polite usage + a User-Agent string).
 
-#Underpowered machines. Fix: lower chunk size / count, or embed asynchronously while returning a first answer, then re-rank on the next turn. (For your course demo, synchronous is fine.)
+# Underpowered machines. Fix: lower chunk size / count, or embed asynchronously while returning a first answer, then re-rank on the next turn. (For your course demo, synchronous is fine.)
 
-#Is dropping Wikipedia now OK?
+# Is dropping Wikipedia now OK?
 
-#Yes. Start with textbook + PubMed (best signal), evaluate, and add on-demand wiki only when your retrieval confidence is low. That keeps your index small and focused, and you still cover gaps.
+# Yes. Start with textbook + PubMed (best signal), evaluate, and add on-demand wiki only when your retrieval confidence is low. That keeps your index small and focused, and you still cover gaps.
 
-#Tiny to-do list to wire this up
+# Tiny to-do list to wire this up
 
 # Add chunk_text() (simple token/sentence splitter with overlap).
 
@@ -164,4 +162,4 @@
 
 # Log metrics: wiki_fetch_count, wiki_enrich_latency_seconds, wiki_cache_hit_ratio.
 
-#If you want, I can give you a compact fetch_wiki_best_match() + chunk_text() you can paste into your app right now.9
+# If you want, I can give you a compact fetch_wiki_best_match() + chunk_text() you can paste into your app right now.9

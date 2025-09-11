@@ -9,7 +9,7 @@
 - 🐳 **Docker Infrastructure** → Docker Compose with Elasticsearch, Qdrant, Grafana running
 - 📦 **Data Indexing** → Medical data successfully indexed in both Elasticsearch and Qdrant
 - 🎯 **Qdrant Vector Search** → Pure semantic search implemented (`src/search/qdrant_search.py`)
-- 🔤 **Elasticsearch BM25** → Pure text search implemented (`src/search/es_search.py`)  
+- 🔤 **Elasticsearch BM25** → Pure text search implemented (`src/search/es_search.py`)
 - 🔀 **Hybrid Search RRF** → Qdrant+ES combination with Reciprocal Rank Fusion (`src/search/hybrid_search.py`)
 - 🤖 **Basic RAG Pipeline** → OpenAI integration with all 3 search methods working
 
@@ -19,14 +19,14 @@
 
 ---
 
-## 📅 **Day 2: LangChain Integration & Advanced RAG** 
+## 📅 **Day 2: LangChain Integration & Advanced RAG**
 *Goal: Add LangChain orchestration + auto-expansion capabilities*
 
 ### 🧩 **Morning (8-12pm): LangChain Integration (NEW)**
 **Based on your LangChain notes - implementing the "glue layer" approach:**
 
 - 🔗 **Wrap Hybrid Search as LangChain Retriever**
-  - **Tools:** `langchain-core`, `langchain-community` 
+  - **Tools:** `langchain-core`, `langchain-community`
   - **Code:** `src/search/langchain_hybrid_retriever.py`
   - **Feature:** Convert existing `hybrid_search.py` to LangChain `BaseRetriever` interface
   - **Benefit:** Standardized Document interface, easy composition
@@ -37,7 +37,7 @@
 hybrid_results = es_client.search(index=index_name, body=hybrid_query)
 result_ids = [hit['_source']['id'] for hit in hybrid_results['hits']['hits']]
 
-# For RAG pipeline (Documents + chaining) - use ElasticsearchRetriever  
+# For RAG pipeline (Documents + chaining) - use ElasticsearchRetriever
 hybrid_retriever = ElasticsearchRetriever.from_es_params(
     index_name=index_name,
     body_func=hybrid_query,
@@ -53,7 +53,7 @@ return result_docs
 ```
 
 **Trade-offs:**
-- **Direct es_client.search(...)** → Fast, minimal for metrics (Hit@k/MRR) 
+- **Direct es_client.search(...)** → Fast, minimal for metrics (Hit@k/MRR)
 - **ElasticsearchRetriever** → Document objects for RAG chains, more overhead
 
 - 🎭 **RAG Chain Composition**
@@ -73,22 +73,22 @@ return result_docs
 
 - 📚 **Knowledge Base Auto-Expansion**
   - **Tools:** `WikipediaLoader`, `RecursiveCharacterTextSplitter`
-  - **Code:** `src/ingestion/auto_expand_kb.py`  
+  - **Code:** `src/ingestion/auto_expand_kb.py`
   - **Flow:** Query → Wikipedia fetch → chunk → upsert to Qdrant+ES → retry search
   - **Benefit:** Automatic knowledge enrichment when existing KB insufficient
 
 - 🔁 **Retry Pipeline**
   - **Tools:** LangChain routing, your existing hybrid search
   - **Code:** `src/llm/auto_retry_rag.py`
-  - **Flow:** 
-    1. Try hybrid retrieval 
+  - **Flow:**
+    1. Try hybrid retrieval
     2. If low confidence → expand KB with Wikipedia
     3. Retry hybrid search on enriched KB
     4. Answer with enhanced context
 
 ### 📊 **Evening (6-9pm): LangChain Evaluation**
 - 🆚 **Compare Traditional vs LangChain RAG**
-  - **Baseline:** Your current hybrid RAG pipeline  
+  - **Baseline:** Your current hybrid RAG pipeline
   - **Enhanced:** LangChain version with auto-expansion
   - **Metrics:** Response quality, knowledge coverage, expansion frequency
 - 📈 **Auto-Expansion Effectiveness**
@@ -122,10 +122,10 @@ return result_docs
   - **LangChain:** Use callbacks for tracing retrieval → expansion → retry flows
   - **Tools:** `prometheus-client`, LangChain observability
 
-### **Afternoon (1-5pm): Documentation (2 POINTS)**  
+### **Afternoon (1-5pm): Documentation (2 POINTS)**
 - 📖 **Updated Documentation**
   - **New Section:** LangChain integration benefits and architecture
-  - **New Section:** Auto-expansion system explanation  
+  - **New Section:** Auto-expansion system explanation
   - **Updated:** Setup instructions with LangChain dependencies
 
 ---
@@ -135,7 +135,7 @@ return result_docs
 ### ✅ **What LangChain Provides:**
 - **Standard Interfaces:** `BaseRetriever`, `Document` - your hybrid search plugs in anywhere
 - **Clean Composition:** Retrieval → routing → expansion → retry chains
-- **Built-in Tools:** Wikipedia loader, text splitters for KB expansion  
+- **Built-in Tools:** Wikipedia loader, text splitters for KB expansion
 - **Observability:** Callbacks and tracing for monitoring expansion events
 - **Flexibility:** Easy to add new expansion sources (HuggingFace, PubMed, etc.)
 
@@ -146,7 +146,7 @@ return result_docs
 
 **Flow:**
 ```
-Query → Hybrid Search → Check Confidence → 
+Query → Hybrid Search → Check Confidence →
   IF Low: Wikipedia Expansion → Re-search → Answer
   IF High: Direct Answer
 ```
@@ -157,7 +157,7 @@ Query → Hybrid Search → Check Confidence →
 
 ### ✅ **Core Requirements (Already Completed/In Progress)**
 1. **Problem Description (2pts)** → ✅ Medical RAG with hybrid search
-2. **Retrieval Flow (2pts)** → ✅ Elasticsearch + Qdrant + RRF implemented  
+2. **Retrieval Flow (2pts)** → ✅ Elasticsearch + Qdrant + RRF implemented
 3. **Retrieval Evaluation (2pts)** → 🔄 Currently finishing hybrid vs pure comparisons
 4. **LLM Evaluation (2pts)** → ✅ Multiple prompts + models tested
 5. **Interface (2pts)** → ✅ Streamlit chat with feedback (will enhance with LangChain)
@@ -168,7 +168,7 @@ Query → Hybrid Search → Check Confidence →
 
 ### 🌟 **Enhanced Bonus Points with LangChain**
 - **Hybrid Search (1pt)** → ✅ Already implemented and evaluated
-- **Query Enhancement (1pt)** → 🆕 LangChain auto-expansion system  
+- **Query Enhancement (1pt)** → 🆕 LangChain auto-expansion system
 - **Advanced RAG (1pt)** → 🆕 LangChain orchestration with retry logic
 - **Knowledge Expansion (1pt)** → 🆕 Automatic Wikipedia integration
 - **Production Features (1pt)** → 🆕 LangChain observability and callbacks
@@ -184,14 +184,14 @@ Query → [Qdrant Search | ES Search | Hybrid RRF] → Context → OpenAI → An
 
 ### **After LangChain (Day 2 - New):**
 ```
-Query → LangChain HybridRetriever → Confidence Check → 
+Query → LangChain HybridRetriever → Confidence Check →
   Branch A: Direct Answer (high confidence)
   Branch B: Wikipedia Expansion → Re-retrieve → Answer (low confidence)
 ```
 
 ### **Key Files Added:**
 - `src/search/langchain_hybrid_retriever.py` - LangChain wrapper for your hybrid search
-- `src/llm/langchain_rag_pipeline.py` - Composable RAG chain  
+- `src/llm/langchain_rag_pipeline.py` - Composable RAG chain
 - `src/ingestion/auto_expand_kb.py` - Wikipedia expansion system
 - `src/llm/expansion_router.py` - Confidence-based routing logic
 - `src/llm/auto_retry_rag.py` - Complete retry pipeline
@@ -202,14 +202,14 @@ Query → LangChain HybridRetriever → Confidence Check →
 
 ### **Day 1 ✅ (COMPLETED)**
 - [x] 3 search methods implemented and working
-- [x] Medical data indexed in both ES and Qdrant  
+- [x] Medical data indexed in both ES and Qdrant
 - [x] Basic RAG pipeline functional
 - [🔄] Hybrid search evaluation in progress
 
 ### **Day 2 🆕 (LangChain Focus)**
 - [ ] LangChain hybrid retriever wrapper working
 - [ ] Auto-expansion system implemented and tested
-- [ ] Retry pipeline functional with Wikipedia integration  
+- [ ] Retry pipeline functional with Wikipedia integration
 - [ ] Enhanced Streamlit interface with expansion visibility
 - [ ] Comparison of traditional vs LangChain RAG approaches
 
@@ -225,7 +225,7 @@ Query → LangChain HybridRetriever → Confidence Check →
 ## 🧠 **Key Implementation Notes from Your LangChain Research**
 
 1. **Keep It Simple:** LangChain as "glue layer" - your hybrid search stays the same, just wrapped
-2. **Single LLM Approach:** One model with two tools (retriever + expander) rather than multiple LLMs  
+2. **Single LLM Approach:** One model with two tools (retriever + expander) rather than multiple LLMs
 3. **Confidence-Based Routing:** Use retrieval scores and context length to trigger expansion
 4. **Modular Design:** Each piece (retriever, expander, router) works independently
 5. **Production Ready:** LangChain provides observability and standardization for production use

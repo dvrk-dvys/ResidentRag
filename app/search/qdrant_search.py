@@ -1,44 +1,45 @@
 import json
 import os
-from qdrant_client import QdrantClient
-from sentence_transformers import SentenceTransformer
 from dataclasses import dataclass
-from typing import List, Dict, Iterable, Optional
+from typing import Dict, Iterable, List, Optional
 
 from evaluation.eval_utils import evaluate
+from qdrant_client import QdrantClient
+from sentence_transformers import SentenceTransformer
 
 # Configuration - matches your ingest script
 QDRANT_URL = os.getenv("QDRANT_URL", "http://localhost:6333")
 COLLECTION_NAME = os.getenv("QDRANT_COLLECTION", "medical_rag_sparse")
 MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
-EMBED_DEVICE = os.getenv("EMBED_DEVICE", "cpu")  # 'cpu' by default in containers mps on local machine
+EMBED_DEVICE = os.getenv(
+    "EMBED_DEVICE", "cpu"
+)  # 'cpu' by default in containers mps on local machine
 
 # Globals
 _QDRANT = None
 _EMBED = None
 
+
 def get_client():
     global _QDRANT
     if _QDRANT is None:
-        #_QDRANT = QdrantClient(
+        # _QDRANT = QdrantClient(
         #    host="localhost", port=6333, grpc_port=6334,
         #    prefer_grpc=True, timeout=30
-        #) ->         # Use REST; it avoids gRPC port issues and works out of the box
+        # ) ->         # Use REST; it avoids gRPC port issues and works out of the box
 
         _QDRANT = QdrantClient(url=QDRANT_URL, prefer_grpc=False, timeout=30)
 
     return _QDRANT
 
+
 def get_model():
     global _EMBED
     if _EMBED is None:
         # Use MPS on Apple Silicon; falls back to CPU if unavailable
-        #device = "mps" if SentenceTransformer(MODEL_NAME).device.type != "cuda" else "cuda"
+        # device = "mps" if SentenceTransformer(MODEL_NAME).device.type != "cuda" else "cuda"
         _EMBED = SentenceTransformer(MODEL_NAME, device=EMBED_DEVICE)
     return _EMBED
-
-
-
 
 
 @dataclass
@@ -50,7 +51,7 @@ class Hit:
     rrf_score: float = 0.0
     source_type: Optional[str] = None
 
-    #?ADD  OTHER SCORES HERE TOO?
+    # ?ADD  OTHER SCORES HERE TOO?
 
 
 def search_qdrant(query, top_k=5):
@@ -69,28 +70,28 @@ def search_qdrant(query, top_k=5):
         collection_name=COLLECTION_NAME,
         query_vector=query_vector,
         limit=top_k,
-        with_payload=True
+        with_payload=True,
     )
 
     # Extract results - adapted for your medical payload structure
     results = []
     for hit in search_results:
-        #results.append({
+        # results.append({
         #    'id': hit.payload.get('id', 'unknown'),
         #    'title': hit.payload.get('title', ''),
         #    'text': hit.payload.get('text', '')[:500],  # truncate for display
         #    'source_type': hit.payload.get('source_type', ''),
         #    'source': hit.payload.get('source', ''),
         #    'score': hit.score
-        #})
+        # })
 
         results.append(
             Hit(
-                id=hit.payload.get('id', 'unknown'),
-                title=hit.payload.get('title', ''),
-                text=hit.payload.get('text', ''),
-                source_type=hit.payload.get('source_type', ''),
-                rrf_score=hit.score
+                id=hit.payload.get("id", "unknown"),
+                title=hit.payload.get("title", ""),
+                text=hit.payload.get("text", ""),
+                source_type=hit.payload.get("source_type", ""),
+                rrf_score=hit.score,
             )
         )
 
@@ -100,7 +101,9 @@ def search_qdrant(query, top_k=5):
 def qdrant_ids(query: str, limit: int = 50) -> list[str]:
     client = get_client()
     model = get_model()
-    vec = model.encode([query], normalize_embeddings=True, batch_size=32, convert_to_numpy=True)[0]
+    vec = model.encode(
+        [query], normalize_embeddings=True, batch_size=32, convert_to_numpy=True
+    )[0]
 
     try:
         res = client.query_points(
@@ -109,23 +112,22 @@ def qdrant_ids(query: str, limit: int = 50) -> list[str]:
             limit=limit,
             with_payload=["id"],
             with_vectors=False,
-            search_params={"hnsw_ef": 128, "exact": False}
+            search_params={"hnsw_ef": 128, "exact": False},
         ).points
     except Exception:
         res = client.search(
             collection_name=COLLECTION_NAME,
             query_vector=vec.tolist(),
             limit=limit,
-            with_payload=["id"]
+            with_payload=["id"],
         )
 
     return [p.payload.get("id") for p in res if p.payload and p.payload.get("id")]
 
 
-
 if __name__ == "__main__":
 
-    ground_truth_path = '//data/evaluation/ground_truth.json'
+    ground_truth_path = "//data/evaluation/ground_truth.json"
     with open(ground_truth_path, "r", encoding="utf-8") as f:
         gt_raw = json.load(f)
     gt = [{"query": row["question"], "doc_id": row["doc_id"]} for row in gt_raw]
@@ -139,14 +141,16 @@ if __name__ == "__main__":
     ndcg = metrics[f"nDCG@{top_k}"]
 
     print("\n📊 Qdrant Evaluation Results (aggregate, per-query metrics)")
-    print(f"Hit@{top_k}: {hit:.3f} | MRR@{top_k}: {mrr:.3f} | MAP@{top_k}: {map_:.3f} | nDCG@{top_k}: {ndcg:.3f}")
+    print(
+        f"Hit@{top_k}: {hit:.3f} | MRR@{top_k}: {mrr:.3f} | MAP@{top_k}: {map_:.3f} | nDCG@{top_k}: {ndcg:.3f}"
+    )
 
     test_queries = [
         "How effective is BA 1 immunostimulant compared to ifosfamide for treating carcinosarcoma in rats?",
         "What are the characteristics and symptoms of gastric carcinoma?",
         "What is cardiac muscle and how does its innervation differ from smooth muscle?",
         "What are the different types of blood vessels and what layers make up their walls?",
-        "What are the lymphatic drainage pathways of the breast?"
+        "What are the lymphatic drainage pathways of the breast?",
     ]
 
     print("🔍 Testing Medical Qdrant Search")

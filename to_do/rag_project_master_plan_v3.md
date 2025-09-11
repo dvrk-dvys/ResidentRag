@@ -6,7 +6,7 @@
 ## 🔧 **Tool Overview & Usage Guide**
 
 ### 🔍 **Search Technologies (Qdrant-First Strategy)**
-- **🎯 Qdrant (PRIMARY):** Vector/semantic search with medical embeddings - YOUR FAVORITE! 
+- **🎯 Qdrant (PRIMARY):** Vector/semantic search with medical embeddings - YOUR FAVORITE!
 - **🔤 Elasticsearch (SECONDARY):** BM25 text search for exact medical terminology
 - **🔀 Hybrid Search:** Qdrant-led combination with ES support for best results
 
@@ -40,7 +40,7 @@
 
 ## 🚀 **Day Zero Status (TODAY - Sept 2, 2025)**
 
-### ✅ **COMPLETED** 
+### ✅ **COMPLETED**
 - 🎉 **MedRAG Dataset Successfully Downloaded** → `scripts/create_medical_seed.py`
 - 🐳 **Docker Compose Infrastructure Setup** → `docker-compose.yml`
 - 📦 **Dependencies Defined** → `requirements.txt`, `Pipfile`, `Pipfile.lock`
@@ -63,21 +63,21 @@
   - QDrant: http://localhost:6333/dashboard
   - Grafana: http://localhost:3000/login
 
-- 🔄 **Index Medical Data into Elasticsearch** 
+- 🔄 **Index Medical Data into Elasticsearch**
   - **Tools:** `elasticsearch` Python client, `scripts/es_ingest.py`
   - **Code:** BM25 indexing with medical article fields
 - 🎯 **Index Medical Data into Qdrant**
   - **Tools:** `qdrant-client`, `sentence-transformers`
   - **Code:** Generate embeddings, store vectors with metadata
 
-#### **Afternoon (1-5pm): Triple Search Implementation (Qdrant-First!)** 
+#### **Afternoon (1-5pm): Triple Search Implementation (Qdrant-First!)**
 - 🎯 **Method 1: Pure Qdrant Vector Search (PRIMARY)**
-  - **Tools:** `qdrant-client`, `sentence-transformers` 
+  - **Tools:** `qdrant-client`, `sentence-transformers`
   - **Code:** `src/search/qdrant_search.py` - medical semantic similarity
 - 🔤 **Method 2: Pure Text Search (ES BM25)**
   - **Tools:** `elasticsearch` client
   - **Code:** `src/search/text_search.py` - medical terminology matching
-- 🔀 **Method 3: Qdrant + ES Hybrid (WINNING COMBO)**  
+- 🔀 **Method 3: Qdrant + ES Hybrid (WINNING COMBO)**
   - **Tools:** Qdrant (primary) + ES (secondary), RRF combination
   - **Code:** `src/search/hybrid_search.py` - Qdrant-led hybrid with ES support
 
@@ -87,8 +87,8 @@
 Why Qdrant doesn’t need BM25 here
 
 We use Qdrant for dense, semantic retrieval and Elasticsearch for BM25 keyword retrieval.
-Instead of duplicating BM25 in Qdrant, we run a hybrid at the app layer: Qdrant handles concept matching 
-(e.g., “heart problems” → “cardiac issues”), while Elasticsearch catches exact medical terms, acronyms, and phrases 
+Instead of duplicating BM25 in Qdrant, we run a hybrid at the app layer: Qdrant handles concept matching
+(e.g., “heart problems” → “cardiac issues”), while Elasticsearch catches exact medical terms, acronyms, and phrases
 (e.g., “MI”, “COPD”, “alpha-bisabolol”). We fuse both result lists with Reciprocal Rank Fusion (RRF),
 which consistently outperforms either method alone. This keeps the stack simpler (one BM25 engine)
 and maximizes retrieval quality.
@@ -121,7 +121,7 @@ assign each ID a score like 1/(K+rank), sum scores across lists, and re-rank.
   - **Tools:** Python scripts, medical questions
   - **Output:** 3 different search results for same query
 
-### 🎨 **Day 2: Evaluation & Interface** 
+### 🎨 **Day 2: Evaluation & Interface**
 *Goal: Compare all methods + web interface*
 
 #### **Morning (8-12pm): Retrieval Evaluation (2 POINTS)**
@@ -135,19 +135,19 @@ assign each ID a score like 1/(K+rank), sum scores across lists, and re-rank.
   - **Expected Winner:** Qdrant+ES Hybrid (92%+ Hit Rate vs 77% pure vector)
   - **Result:** Documentation of BEST performing method ← **REQUIRED FOR 2 POINTS**
 
-#### **Afternoon (1-5pm): LLM Evaluation (2 POINTS)**  
+#### **Afternoon (1-5pm): LLM Evaluation (2 POINTS)**
 - 🧠 **Test Multiple LLM Approaches**
   - **Tools:** OpenAI API (GPT-4o-mini vs GPT-4o)
   - **Code:** `src/llm/llm_comparison.py`
 - 📝 **Test Multiple Prompt Strategies**
   - **Prompt 1:** Basic Q&A template
-  - **Prompt 2:** Context-aware with medical focus  
+  - **Prompt 2:** Context-aware with medical focus
   - **Prompt 3:** Chain-of-thought reasoning
   - **Tools:** `src/llm/prompt_templates.py`
   - **Result:** Documentation of BEST LLM + prompt combo ← **REQUIRED FOR 2 POINTS**
 
 #### **Evening (6-10pm): Streamlit Interface (2 POINTS)**
-- 💬 **Build Chat Interface** 
+- 💬 **Build Chat Interface**
   - **Tools:** `streamlit`, session state
   - **Code:** `app/main.py` - chat history, message display
 - 👍 **Add User Feedback System**
@@ -168,7 +168,7 @@ assign each ID a score like 1/(K+rank), sum scores across lists, and re-rank.
   - **Tools:** Grafana UI, Prometheus data source
   - **Charts Required:**
     1. Query volume over time
-    2. Response time distribution  
+    2. Response time distribution
     3. User feedback scores (from PostgreSQL)
     4. Search method usage comparison
     5. Most popular medical topics
@@ -196,19 +196,19 @@ assign each ID a score like 1/(K+rank), sum scores across lists, and re-rank.
 
 ### ✅ **Core 18 Points - Tool Mapping**
 1. **Problem Description (2pts)** → Markdown documentation
-2. **Retrieval Flow (2pts)** → Elasticsearch + Qdrant + OpenAI integration  
+2. **Retrieval Flow (2pts)** → Elasticsearch + Qdrant + OpenAI integration
 3. **Retrieval Evaluation (2pts)** → Hit Rate/MRR comparison of 3 search methods
 4. **LLM Evaluation (2pts)** → Multiple models + prompt testing
 5. **Interface (2pts)** → Streamlit chat application
 6. **Ingestion (2pts)** → ✅ MedRAG Python script (automated)
 7. **Monitoring (2pts)** → Prometheus + Grafana + user feedback
-8. **Containerization (2pts)** → ✅ Docker Compose with all services  
+8. **Containerization (2pts)** → ✅ Docker Compose with all services
 9. **Reproducibility (2pts)** → Clear README + working setup
 
 ### 🌟 **Bonus Points Strategy (5+ pts)**
 - **Hybrid Search (1pt)** → ✅ Planned (ES + Qdrant combination)
 - **Document Re-ranking (1pt)** → Cross-encoder after initial search
-- **Query Rewriting (1pt)** → Query enhancement before search  
+- **Query Rewriting (1pt)** → Query enhancement before search
 - **Cloud Deployment (2pts)** → AWS/GCP deployment
 - **Extra Features (1pt)** → Advanced analytics, multi-language support
 
@@ -216,9 +216,9 @@ assign each ID a score like 1/(K+rank), sum scores across lists, and re-rank.
 
 ## 🔍 **When to Use Each Search Technology (Qdrant-First!)**
 
-### 🎯 **Qdrant (PRIMARY - Your Favorite!)**  
+### 🎯 **Qdrant (PRIMARY - Your Favorite!)**
 **Use for:**
-- **Medical concept understanding** → "Heart problems" finds "cardiac issues" 
+- **Medical concept understanding** → "Heart problems" finds "cardiac issues"
 - **Semantic similarity** → Understanding medical relationships
 - **Primary search engine** → Leading the hybrid approach
 - **Medical embeddings** → Specialized medical knowledge vectors
@@ -226,7 +226,7 @@ assign each ID a score like 1/(K+rank), sum scores across lists, and re-rank.
 ### 🔤 **Elasticsearch (SECONDARY Support)**
 **Use for:**
 - **Exact medical terminology** → "myocardial infarction" exact matches
-- **Acronym searches** → "MI", "COPD", "BP" medical abbreviations  
+- **Acronym searches** → "MI", "COPD", "BP" medical abbreviations
 - **Supporting Qdrant** → Complementing semantic search
 - **Fallback search** → When vector search misses obvious keywords
 
@@ -244,12 +244,12 @@ assign each ID a score like 1/(K+rank), sum scores across lists, and re-rank.
 ### 🔍 **Retrieval Evaluation (2 points)**
 **Must test ALL THREE approaches:**
 1. **Pure Qdrant Vector** → Medical semantic similarity performance (expected ~77%)
-2. **Pure ES Text** → Medical terminology matching performance  
+2. **Pure ES Text** → Medical terminology matching performance
 3. **Qdrant+ES Hybrid** → Combined approach (expected winner ~92%+)
 
 **Tools:** Hit Rate, MRR metrics → Document Qdrant+ES hybrid as winner → Use in final app
 
-### 🧠 **LLM Evaluation (2 points)** 
+### 🧠 **LLM Evaluation (2 points)**
 **Must test MULTIPLE approaches:**
 1. **Models:** GPT-4o-mini vs GPT-4o cost/performance
 2. **Prompts:** Basic Q&A vs Context-aware vs Chain-of-thought
@@ -263,7 +263,7 @@ assign each ID a score like 1/(K+rank), sum scores across lists, and re-rank.
 
 ### **Day 1 ✅**
 - [ ] 3 search methods implemented and working
-- [ ] Medical data indexed in both ES and Qdrant  
+- [ ] Medical data indexed in both ES and Qdrant
 - [ ] Basic RAG pipeline functional
 - [ ] All search methods tested with same queries
 

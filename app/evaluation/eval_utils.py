@@ -1,17 +1,17 @@
 import math
 
 
-#evaluators
+# evaluators
 def hit_rate(pred_ids, true_ids):
-    #Hit@k: fraction of queries where the correct document appears anywhere in the top-k results. (Binary per query: hit or miss.)
+    # Hit@k: fraction of queries where the correct document appears anywhere in the top-k results. (Binary per query: hit or miss.)
     gold = set(true_ids if isinstance(true_ids, (list, tuple, set)) else [true_ids])
     return 1.0 if any(did in gold for did in pred_ids) else 0.0
 
 
 def mrr(preds, true_id):
-    #MRR (Mean Reciprocal Rank): averages 1/rank of the first correct result.
+    # MRR (Mean Reciprocal Rank): averages 1/rank of the first correct result.
     # If the correct doc is at rank 1 → 1.0; rank 5 → 0.2; not found → 0.0. Unlike Hit@k, MRR rewards putting the right doc higher.
-    if preds and hasattr(preds[0], 'id'):
+    if preds and hasattr(preds[0], "id"):
         pred_ids = [hit.id for hit in preds]
     else:
         pred_ids = preds
@@ -79,6 +79,7 @@ def ndcg_at_k(pred_ids, gold_ids, top_k=10):
     ideal_rels = min(len(gold), top_k)
     idcg = sum(1.0 / math.log2(i + 1) for i in range(1, ideal_rels + 1))
     return (dcg / idcg) if idcg > 0 else 0.0
+
 
 def evaluate(gt, retriever, top_k=10):
     """

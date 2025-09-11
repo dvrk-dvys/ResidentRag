@@ -1,23 +1,22 @@
-import json
 import asyncio
-from fastmcp import Client, FastMCP
-from fastmcp.tools import Tool
-from fastmcp.resources import Resource
-from fastmcp.prompts import Prompt
-
-
-from typing import List, Dict, Any
-from app.search.hybrid_search import hybrid_search
+import json
 import os
+from typing import Any, Dict, List
 
+from fastmcp import Client, FastMCP
+from fastmcp.prompts import Prompt
+from fastmcp.resources import Resource
+from fastmcp.tools import Tool
 
-'''
+from app.search.hybrid_search import hybrid_search
+
+"""
 Need an end chat tool maybe?
 
 #@make_async_background
 https://gofastmcp.com/servers/context
 https://gofastmcp.com/servers/progress
-'''
+"""
 
 
 mcp = FastMCP("MedicalTools")
@@ -29,6 +28,7 @@ async def test_client():
     async with client:
         tools = await client.list_tools()
         print(f"Available tools: {[tool.name for tool in tools]}")
+
 
 def mcp_tools_to_openai(tools):
     out = []
@@ -46,26 +46,29 @@ def mcp_tools_to_openai(tools):
         # TODO: tools util for conversion
 
         if schema.get("type") != "object":
-            schema = {"type": "object", "properties": schema.get("properties", {}), "required": schema.get("required", [])}
+            schema = {
+                "type": "object",
+                "properties": schema.get("properties", {}),
+                "required": schema.get("required", []),
+            }
 
         # Helpful default to avoid stray args
         schema.setdefault("additionalProperties", False)
 
-        out.append({
-            "type": "function",
-            "function": {
-                "name": name,
-                "description": desc,
-                "parameters": schema,
+        out.append(
+            {
+                "type": "function",
+                "function": {
+                    "name": name,
+                    "description": desc,
+                    "parameters": schema,
+                },
             }
-        })
+        )
     return out
 
 
-
-
-
-#@mcp_tool
+# TODO: @mcp_tool
 def knowledge_gap_detector(query: str, medical_results: List[Dict]) -> Dict:
     """
     Analyzes if medical search results adequately answer the user query
@@ -94,7 +97,7 @@ def knowledge_gap_detector(query: str, medical_results: List[Dict]) -> Dict:
     name="hybrid_search",
     description="Search the MedRag knowledge base using a Qdrant (semantic search) + ElasticSearch (BM25) hybrid retriever.",
     tags={"medrag", "search"},
-    #meta={"version": "1.0", "author": "dvrk_dvys"}  # Custom metadata
+    # meta={"version": "1.0", "author": "dvrk_dvys"}  # Custom metadata
 )
 def hybrid_search_tool(query: str, top_k: int = 5) -> List[Dict[str, Any]]:
     """
@@ -109,7 +112,8 @@ def hybrid_search_tool(query: str, top_k: int = 5) -> List[Dict[str, Any]]:
             "text": h.text,
             "rrf_score": getattr(h, "rrf_score", 0.0),
             "source_type": getattr(h, "source_type", None),
-        } for h in hits
+        }
+        for h in hits
     ]
 
 
@@ -133,13 +137,13 @@ def simple_response_ok(query: str) -> str:
     pass
 
 
-@mcp_tool
+# TODO: @mcp_tool
 def intelligent_merge_tool(medical_results, wikipedia_results, intent_data) -> Dict:
     """Combine and rerank results from multiple sources"""
-    # TODO:
     pass
 
-@mcp_tool
+
+# TODO: @mcp_tool
 def user_intent_classifier(query: str, conversation_history: List[str] = None) -> Dict:
     """
     Determines user intent and expertise level for response customization
@@ -160,12 +164,7 @@ def user_intent_classifier(query: str, conversation_history: List[str] = None) -
     # Medical terminology usage
     # Question structure analysis
     # Context from conversation
-    # TODO:
     pass
-
-
-
-
 
 
 if __name__ == "__main__":
@@ -173,14 +172,13 @@ if __name__ == "__main__":
     mcp.run()
 
 
-#User Query → Intent Classification → Medical Search → Gap Detection → [Wikipedia Search] → Merge → Format Response
-#IF user_intent_classifier.user_type == "patient" AND knowledge_gap_detector.has_gap:
+# User Query → Intent Classification → Medical Search → Gap Detection → [Wikipedia Search] → Merge → Format Response
+# IF user_intent_classifier.user_type == "patient" AND knowledge_gap_detector.has_gap:
 #    Use wikipedia_search_tool with gap_type="definition"
 #    Apply simple language formatting
-#ELIF user_intent_classifier.user_type == "student" AND knowledge_gap_detector.gap_type == "mechanism":
+# ELIF user_intent_classifier.user_type == "student" AND knowledge_gap_detector.gap_type == "mechanism":
 #    Use wikipedia_search_tool for foundational concepts
 #    Blend with technical medical content
-
 
 
 def get_mcp_client():
@@ -188,16 +186,18 @@ def get_mcp_client():
     mcp_url = os.getenv("MCP_SERVER_URL", "./app/llm/mediRAG_tools_server.py")
     return Client(mcp_url)
 
+
 async def initialize_tools():
     """Initialize MCP client and get tools"""
     client = get_mcp_client()
     try:
         async with client:
             tools = await client.list_tools()
-            print(f"✅ Connected to MCP server. Available tools: {[tool.name for tool in tools]}")
+            print(
+                f"✅ Connected to MCP server. Available tools: {[tool.name for tool in tools]}"
+            )
             return tools
     except Exception as e:
         print(f"❌ Failed to connect to MCP server: {e}")
         print("🔄 Running without tools...")
         return None
-

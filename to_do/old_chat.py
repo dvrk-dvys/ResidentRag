@@ -1,6 +1,6 @@
 import streamlit_ui as st
-from openai import OpenAI
 import tools
+from openai import OpenAI
 
 client = OpenAI()
 
@@ -11,7 +11,7 @@ chat_tools = tools.Tools()
 chat_tools.add_tool(search_tool.search, search_tool.search_tool)
 
 developer_prompt = """
-You're a course teaching assistant. 
+You're a course teaching assistant.
 You're given a question from a course student and your task is to answer it.
 
 Use FAQ if your own knowledge is not sufficient to answer the question.
@@ -61,7 +61,7 @@ if st.session_state.pending_response:
     chat_messages = st.session_state.chat_messages.copy()
     while True:
         response = client.responses.create(
-            model='gpt-4o-mini',
+            model="gpt-4o-mini",
             input=chat_messages,
             tools=chat_tools.get_tools(),
         )
@@ -72,19 +72,23 @@ if st.session_state.pending_response:
                 # Call the tool and display result
                 result = chat_tools.function_call(entry)
                 chat_messages.append(result)
-                st.session_state.display_messages.append({
-                    "role": "function_call",
-                    "name": entry.name,
-                    "arguments": tools.shorten(entry.arguments),
-                    "output": result["output"],
-                })
+                st.session_state.display_messages.append(
+                    {
+                        "role": "function_call",
+                        "name": entry.name,
+                        "arguments": tools.shorten(entry.arguments),
+                        "output": result["output"],
+                    }
+                )
                 has_tool_calls = True
             elif entry.type == "message":
                 # Display assistant message
-                st.session_state.display_messages.append({
-                    "role": "assistant",
-                    "content": entry.content[0].text,
-                })
+                st.session_state.display_messages.append(
+                    {
+                        "role": "assistant",
+                        "content": entry.content[0].text,
+                    }
+                )
         if not has_tool_calls:
             break
     st.session_state.chat_messages = chat_messages

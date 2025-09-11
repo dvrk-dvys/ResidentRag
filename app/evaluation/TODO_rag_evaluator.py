@@ -43,9 +43,9 @@ and provide your evaluation in parsable JSON without using code blocks:
 """.strip()
 
 
-ground_truth_url = url_prefix + 'ground-truth-data.csv'
+ground_truth_url = url_prefix + "ground-truth-data.csv"
 df_ground_truth = pd.read_csv(ground_truth_url)
-ground_truth = df_ground_truth.to_dict(orient='records')
+ground_truth = df_ground_truth.to_dict(orient="records")
 
 
 for record in tqdm(ground_truth):
@@ -57,7 +57,7 @@ evaluations = []
 
 for record in tqdm(samples):
     prompt = prompt1_template.format(**record)
-    evaluation = llm(prompt, model='gpt-4o-mini')
+    evaluation = llm(prompt, model="gpt-4o-mini")
     evaluations.append(evaluation)
 
 
@@ -69,7 +69,6 @@ for i, str_eval in enumerate(evaluations):
 
 df_evaluations = pd.DataFrame(json_evaluations)
 df_evaluations.Relevance.value_counts()
-
 
 
 similarity = []

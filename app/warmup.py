@@ -1,4 +1,6 @@
-import os, time
+import os
+import time
+
 from elasticsearch import Elasticsearch
 from qdrant_client import QdrantClient
 from sentence_transformers import SentenceTransformer
@@ -8,6 +10,7 @@ QDRANT_URL = os.getenv("QDRANT_URL", "http://qdrant:6333")
 QDRANT_COLLECTION = os.getenv("QDRANT_COLLECTION", "medical_rag_sparse")
 MODEL_NAME = os.getenv("EMBED_MODEL", "sentence-transformers/all-MiniLM-L6-v2")
 ES_INDEX = os.getenv("ES_INDEX", "medical_docs")
+
 
 def main():
     # Load model (uses cache if already present)
@@ -28,12 +31,18 @@ def main():
     qdr.get_collections()
     try:
         vec = model.encode(["dummy"], normalize_embeddings=True)[0].tolist()
-        qdr.query_points(collection_name=QDRANT_COLLECTION, query=vec,
-                         limit=1, with_payload=False, with_vectors=False)
+        qdr.query_points(
+            collection_name=QDRANT_COLLECTION,
+            query=vec,
+            limit=1,
+            with_payload=False,
+            with_vectors=False,
+        )
     except Exception:
         pass
 
     print("✅ Warmup OK")
+
 
 if __name__ == "__main__":
     main()

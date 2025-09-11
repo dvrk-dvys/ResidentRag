@@ -1,13 +1,12 @@
-from app.search.hybrid_search import hybrid_search
-from tools.search_wikipedia import WikipediaTool
-from tools.search_pubmed import PubMedTool
-from typing import Dict, Any
+from typing import Any, Dict
 
+from tools.search_pubmed import PubMedTool
+from tools.search_wikipedia import WikipediaTool
+
+from app.search.hybrid_search import hybrid_search
 
 WIKI = WikipediaTool()
 PUBMED = PubMedTool()
-
-# app/tools/simple_tools.py
 
 
 def simple_response_ok(query: str) -> Dict[str, Any]:
@@ -32,13 +31,16 @@ def tool_hybrid_search(self, query, top_k=5):
     except Exception as e:
         print(f"Error in hybrid search: {e}")
         return []
-    return [{"id": h.id,
-             "title": h.title,
-             "text": h.text,
-             "rrf_score": getattr(h, "rrf_score", 0.0),
-             "source_type": getattr(h, "source_type", None)} for h in hits]
-
-
+    return [
+        {
+            "id": h.id,
+            "title": h.title,
+            "text": h.text,
+            "rrf_score": getattr(h, "rrf_score", 0.0),
+            "source_type": getattr(h, "source_type", None),
+        }
+        for h in hits
+    ]
 
 
 FUNCTION_MAP = {
@@ -48,8 +50,6 @@ FUNCTION_MAP = {
     "simple_response_ok": lambda query: "OK",
 }
 
-
-# app/tools/openai_tools.py
 TOOLS_JSON = [
     {
         "type": "function",
@@ -60,12 +60,17 @@ TOOLS_JSON = [
                 "type": "object",
                 "properties": {
                     "query": {"type": "string", "description": "User question"},
-                    "top_k": {"type": "integer", "minimum": 1, "maximum": 20, "default": 5}
+                    "top_k": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 20,
+                        "default": 5,
+                    },
                 },
                 "required": ["query"],
-                "additionalProperties": False
-            }
-        }
+                "additionalProperties": False,
+            },
+        },
     },
     {
         "type": "function",
@@ -76,12 +81,17 @@ TOOLS_JSON = [
                 "type": "object",
                 "properties": {
                     "query": {"type": "string"},
-                    "top_k": {"type": "integer", "minimum": 1, "maximum": 10, "default": 5}
+                    "top_k": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 10,
+                        "default": 5,
+                    },
                 },
                 "required": ["query"],
-                "additionalProperties": False
-            }
-        }
+                "additionalProperties": False,
+            },
+        },
     },
     {
         "type": "function",
@@ -92,24 +102,29 @@ TOOLS_JSON = [
                 "type": "object",
                 "properties": {
                     "query": {"type": "string"},
-                    "top_k": {"type": "integer", "minimum": 1, "maximum": 10, "default": 5}
+                    "top_k": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 10,
+                        "default": 5,
+                    },
                 },
                 "required": ["query"],
-                "additionalProperties": False
-            }
-        }
+                "additionalProperties": False,
+            },
+        },
     },
     {
-       "type": "function",
-       "function": {
-         "name": "simple_response_ok",
-         "description": "Signal this is general chat; answer directly without retrieval.",
-         "parameters": {
-           "type":"object",
-           "properties":{"query":{"type":"string"}},
-           "required":["query"],
-           "additionalProperties": False
-         }
-       }
-     }
+        "type": "function",
+        "function": {
+            "name": "simple_response_ok",
+            "description": "Signal this is general chat; answer directly without retrieval.",
+            "parameters": {
+                "type": "object",
+                "properties": {"query": {"type": "string"}},
+                "required": ["query"],
+                "additionalProperties": False,
+            },
+        },
+    },
 ]

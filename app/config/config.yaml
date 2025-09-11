@@ -49,7 +49,7 @@ data:
   base_dir: "data"
   dataset_paths:
     textbook: "MedRAG/textbooks"
-    pubmed: "MedRAG/pubmed" 
+    pubmed: "MedRAG/pubmed"
     wiki: "data/medical_wiki"
   output_format: "json"
 
@@ -59,7 +59,7 @@ seeds:
     medical_textbook:
       size: 2000
       max_size: 125847
-    medical_pubmed: 
+    medical_pubmed:
       size: 20000
       max_size: 2000000
     medical_wiki:
@@ -124,7 +124,7 @@ java:
 env_vars:
   - "OPENAI_API_KEY"
   - "ES_URL"
-  - "QDRANT_URL" 
+  - "QDRANT_URL"
   - "ES_INDEX"
   - "QDRANT_COLLECTION"
   - "SKIP_WARMUP"

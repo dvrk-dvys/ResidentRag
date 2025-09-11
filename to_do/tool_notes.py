@@ -51,11 +51,12 @@ openai_tools = [
 ### 2) Bridge: OpenAI tool-calls → FastMCP client
 
 ```python
+import asyncio
 # openai_with_mcp.py
 import json
-import asyncio
-from openai import OpenAI
+
 from fastmcp import Client as MCPClient
+from openai import OpenAI
 from tools_schema import openai_tools
 
 client = OpenAI()
@@ -163,12 +164,14 @@ Right now you have a couple of bugs:
 Drop-in server (`tools_server.py`) using stdio (no ports):
 
 ```python
-from fastmcp import FastMCP
-from typing import List, Dict, Any
-from app.search.hybrid_search import hybrid_search as run_hybrid
-from app.search.es_search import wait_for_es
-from elasticsearch import Elasticsearch
 import os
+from typing import Any, Dict, List
+
+from elasticsearch import Elasticsearch
+from fastmcp import FastMCP
+
+from app.search.es_search import wait_for_es
+from app.search.hybrid_search import hybrid_search as run_hybrid
 
 mcp = FastMCP("MedicalTools")
 
@@ -511,7 +514,7 @@ You are a medical research assistant. Your goal is to answer: {question}
 
 AVAILABLE ACTIONS:
 - MEDICAL_SEARCH: Search medical literature/knowledge base
-- CONVERSATION_SEARCH: Search previous conversation context  
+- CONVERSATION_SEARCH: Search previous conversation context
 - FINAL_ANSWER: Provide complete answer with sources
 - CLARIFICATION_NEEDED: Ask user for more specific information
 
@@ -528,7 +531,7 @@ Respond with JSON in this format:
     "reasoning": "Why you chose this action",
     "action": "MEDICAL_SEARCH|CONVERSATION_SEARCH|FINAL_ANSWER|CLARIFICATION_NEEDED",
     "keywords": ["search", "terms"] // if MEDICAL_SEARCH
-    "context_query": "search terms" // if CONVERSATION_SEARCH  
+    "context_query": "search terms" // if CONVERSATION_SEARCH
     "answer": "detailed response with citations" // if FINAL_ANSWER
     "clarification_request": "what you need to know" // if CLARIFICATION_NEEDED
     "confidence": 0.8 // how confident you are (0-1)
