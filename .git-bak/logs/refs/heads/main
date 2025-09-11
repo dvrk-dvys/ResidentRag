@@ -1,0 +1,10 @@
+0000000000000000000000000000000000000000 af3f22a1ad423a3d6e20f2c79afd32d0668f3f73 dvrk-dvys <ja.harr91@gmail.com> 1756849870 +0200	commit (initial): day zero
+af3f22a1ad423a3d6e20f2c79afd32d0668f3f73 b6a59945db7a79c8d4f3ce6a3889812117857c5f dvrk-dvys <ja.harr91@gmail.com> 1756892826 +0200	commit: Initial commit without large files
+b6a59945db7a79c8d4f3ce6a3889812117857c5f e058560da936002510da36ba2a4df9e8efc235fa dvrk-dvys <ja.harr91@gmail.com> 1756892826 +0200	filter-branch: rewrite
+e058560da936002510da36ba2a4df9e8efc235fa ccc3f5d8b3e16311e0eb2de2a8f52b3728237991 dvrk-dvys <ja.harr91@gmail.com> 1756978838 +0200	commit: Add IntelliJ IDEA files, Elasticsearch and Qdrant storage to .gitignore
+ccc3f5d8b3e16311e0eb2de2a8f52b3728237991 619482904a5508edec3df789a08adf94af88ae10 dvrk-dvys <ja.harr91@gmail.com> 1756979164 +0200	commit: Remove tracked files that should be ignored and add remaining changes
+619482904a5508edec3df789a08adf94af88ae10 08df42357dda0f6719524b13206b9d8f883f6290 dvrk-dvys <ja.harr91@gmail.com> 1757108520 +0200	commit: streamlitchat not loading elastic search in time
+08df42357dda0f6719524b13206b9d8f883f6290 0b6b2b35af85942c4a23839bca3515ee8986a797 dvrk-dvys <ja.harr91@gmail.com> 1757119166 +0200	commit: streamlit & hybrid search working
+0b6b2b35af85942c4a23839bca3515ee8986a797 0903b3f41bf206b5933461baae95d443f820067e dvrk-dvys <ja.harr91@gmail.com> 1757190379 +0200	commit: tools base
+0903b3f41bf206b5933461baae95d443f820067e 2e4ba48cf7c70ee26b4ff1bdc9212dc14dbcef4b dvrk-dvys <ja.harr91@gmail.com> 1757546313 +0200	commit: pubmed and wikipedia tools
+2e4ba48cf7c70ee26b4ff1bdc9212dc14dbcef4b fdeda513c47d292dd5676be229a2def01ec760b7 dvrk-dvys <ja.harr91@gmail.com> 1757546487 +0200	commit (amend): pubmed and wikipedia tools
