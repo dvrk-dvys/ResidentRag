@@ -1,10 +1,14 @@
+import inspect
 from typing import Any, Dict
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
+from search.hybrid_search import hybrid_search
 from search.search_utils import Hit
 from tools.search_pubmed import PubMedTool
 from tools.search_wikipedia import WikipediaTool
-
-from app.search.hybrid_search import hybrid_search
 
 WIKI = WikipediaTool()
 PUBMED = PubMedTool()
@@ -26,8 +30,8 @@ def simple_response_ok(query):
     }
 
 
-def tool_hybrid_search(query: str, top_k: int = 5) -> list[dict]:
-    hits: list[Hit] = hybrid_search(query, top_k=top_k)
+def tool_hybrid_search(query, top_k=5, local=False):
+    hits: list[Hit] = hybrid_search(query, top_k=top_k, local=local)
     return [
         {
             "id": h.id,
@@ -62,6 +66,11 @@ TOOLS_JSON = [
                         "minimum": 1,
                         "maximum": 20,
                         "default": 5,
+                    },
+                    "local": {
+                        "type": "boolean",
+                        "description": "Use local URLs instead of Docker service names",
+                        "default": False,
                     },
                 },
                 "required": ["query"],

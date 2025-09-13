@@ -3,7 +3,7 @@ import time
 from contextlib import contextmanager
 from datetime import datetime
 
-from search.search_utils import Hit
+from search.search_utils import Hit, rerank_rrf
 from tools.registry import TOOLS_JSON
 
 
@@ -29,7 +29,6 @@ TASK:
 - When you experience a lack of information or require a citation, feel free to utilize the TOOLS available to you to answer the question.
 - If you cannot answer the question using CONTEXT, TOOL, or your own knowledge, tell the user this and prompt for more information or ask if there are any other question that you can help with.
 
-The citation to provide in your corpus CONTEXT provided answer is the HIT.title value in the HIT dataclass.
 
 Safety: do not provide personalized medical advice; flag emergencies and tell the user to seek medical assistance.
 Style: plain language first; concise; SI units; define acronyms once.
@@ -71,7 +70,7 @@ You can perform the following actions:
 
 - ANSWER_CONTEXT: the question using the CONTEXT provided by the search results
 - ANSWER: the question using your own knowledge.
-- TOOL: Use one of the available tools to help answer the question
+- TOOL: Select ONLY ONE of the available tools to use to help answer the question
 
 TOOLS (use only if needed):
 
@@ -87,33 +86,10 @@ REASONING (internal to you; don’t expose unless asked):
 - If tool output is low-relevance, say so briefly and answer with the best available information.
 
 OUTPUT FORMAT:
-- If you used a tool, synthesize a brief answer (3–6 sentences) and list compact citations with titles (and URLs if provided).
-- If you did not use a tool, answer briefly and clearly, and never invent fake citations.
-- The citations and url links may only come from the knowledge base or tool output.
-
-If you can answer the QUESTION using CONTEXT, use this template:
-
-{{
-"action": "ANSWER_CONTEXT",
-"answer": "<your answer>",
-"source": "CONTEXT"
-}}
-
-If you can, use your own knowledge to answer the question:
-
-{{
-"action": "ANSWER",
-"answer": "<your answer>",
-"source": "OWN_KNOWLEDGE"
-}}
-
-If you want to use a tool, use this template:
-
-{{
-"action": "TOOL",
-"reasoning": "<add your reasoning here>",
-"keywords": ["search query 1", "search query 2", ...]
-}}
+- If you used a tool, synthesize a brief answer (3–6 sentences) from the collected CONTEXT.
+- If you did not use a tool, answer briefly and clearly, from your own knowledge and never invent fake facts.
+- "Do NOT include citations, references, URLs, or a 'Citations:' section in your answer. "
+- Try to use the same keywords and medical terminology of the best data points in the CONTEXT.
 
 
 STOP CONDITIONS:
@@ -126,7 +102,8 @@ RULES:
 The current iteration number: {iteration_number}. If we exceed the allowed number
 of iterations, give the best possible answer with the provided information.
 -Don't use search queries used at the previous iterations.
--Don't repeat previously performed actions.
+-Do not EVER repeat previously performed TOOLS.
+-Select ONLY ONE TOOL per iteration.
 
 
 
@@ -217,38 +194,52 @@ def build_rag_prompt(
     search_results=[],
     search_queries=[],
     previous_actions=[],
-    max_iterations=3,
-    iteration_number=0,
+    max_iter=3,
+    curr_iter=0,
+    rrf_k=60,
+    top_k=6,
 ):
 
-    if settings.get("show_sources", True):
-        context_text = "\n\n".join(
-            [
-                f"Source: {doc.title}\nContent: {doc.text}\nRelevance Score: {doc.rrf_score:.3f}"
-                for doc in search_results
-            ]
-        )
-    else:
-        context_text = "\n\n".join([doc.text for doc in search_results])
-
-    tool_info = "\n".join(
-        [
-            f"- {t['function']['name']}: {t['function']['description']}"
-            for t in tools
-            if t.get("type") == "function" and "function" in t
-        ]
+    # On final iteration, fuse + slice; otherwise leave as-is
+    ranked = (
+        rerank_rrf(search_results, w_rrf=1.0, w_cos=1.0, top_k=top_k)
+        if curr_iter == max_iter - 1
+        else search_results
     )
 
-    return MEDICAL_AGENTIC_PROMPT_TEMPLATE.format(
+    def fmt(doc: dict) -> str:
+        title = doc.get("title") or doc.get("id") or "Unknown"
+        text = doc.get("text", "")
+        score = doc.get("rrf_score")
+        if score is not None:
+            return f"Source: {title}\nContent: {text}\nRelevance Score: {score:.3f}"
+        return f"Source: {title}\nContent: {text}"
+
+    if settings.get("show_sources", True):
+        context_text = "\n\n".join(fmt(d) for d in ranked)
+    else:
+        context_text = "\n\n".join(d.get("text", "") for d in ranked)
+
+    tool_info = "\n".join(
+        f"- {t['function']['name']}: {t['function']['description']}"
+        for t in tools
+        if t.get("type") == "function" and "function" in t
+    )
+
+    prompt = MEDICAL_AGENTIC_PROMPT_TEMPLATE.format(
         question=question,
         context=context_text,
         tools=tool_info,
-        search_results=search_results,
+        search_results=ranked,
         search_queries="\n".join(search_queries),
         previous_actions="\n".join(previous_actions),
-        max_iterations=max_iterations,
-        iteration_number=iteration_number,
+        max_iterations=max_iter,
+        iteration_number=curr_iter + 1,
     )
+
+    if curr_iter == max_iter - 1:
+        prompt += "\n\nFINAL_NOTE: This is the final iteration. You must answer now in 3–6 sentences using the provided CONTEXT if possible, otherwise your own knowledge. Output either an ANSWER_CONTEXT or ANSWER JSON block exactly as specified. Do NOT call tools."
+    return prompt, ranked
 
 
 # --------------------------------------------------------------------------------
@@ -310,3 +301,28 @@ if __name__ == "__main__":
 
         print("\n================== USER PROMPT ==================\n")
         print(user_prompt)
+
+
+# If you can answer the QUESTION using CONTEXT, use this template:
+
+# {{
+# "action": "ANSWER_CONTEXT",
+# "answer": "<your answer>",
+# "source": "CONTEXT"
+# }}
+
+# If you can, use your own knowledge to answer the question:
+
+# {{
+# "action": "ANSWER",
+# "answer": "<your answer>",
+# "source": "OWN_KNOWLEDGE"
+# }}
+
+# If you want to use a tool, use this template:
+
+# {{
+# "action": "TOOL",
+# "reasoning": "<add your reasoning here>",
+# "keywords": ["search query 1", "search query 2", ...]
+# }}

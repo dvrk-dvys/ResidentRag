@@ -86,6 +86,27 @@ def llm(prompt, sys_prompt=None, model=DEFAULT_MODEL) -> LLMResponse:
         )
 
 
+def filter_used_tools(tools, used):
+    """Return tools list with already used tool names removed."""
+    used_names = {name for name, _ in used}
+    return [t for t in tools if t["function"]["name"] not in used_names]
+
+
+def format_citation(doc):
+    stype = doc.get("source_type")
+    title = doc.get("title", "Unknown")
+
+    if stype == "pubmed":
+        url = doc.get("url", "")
+        year = doc.get("year", "")
+        return f"{title} ({year}). {url}"
+    elif stype == "wikipedia":
+        url = doc.get("url", "")
+        return f"{title}. {url}"
+    else:  # textbook or local corpus
+        return title
+
+
 def agentic_llm(
     query,
     settings,
@@ -95,6 +116,8 @@ def agentic_llm(
     temperature=0.1,
     max_tokens=500,
     max_iterations=3,
+    local=False,
+    tools_per_iter=2,
 ) -> LLMResponse:
     """
     Call OpenAI LLM with the prompt using an iterative agent loop.
@@ -120,6 +143,7 @@ def agentic_llm(
 
     The loop stops early if the model answers without calling a tool, or after the final iteration.
     """
+    client = get_openai_client()
 
     # Build context based on user type and detail level
     sys_prompt = build_rag_context(settings)
@@ -132,15 +156,19 @@ def agentic_llm(
 
     try:
         for i in range(max_iterations):
+            print(f"___Iteration {i}___")
 
-            prompt = build_rag_prompt(
+            if i == 2:
+                print()
+
+            prompt, search_results = build_rag_prompt(
                 question=query,
                 settings=settings,
                 search_results=search_results,
                 search_queries=search_queries,
                 previous_actions=previous_actions,
-                max_iterations=max_iterations,
-                iteration_number=i,
+                max_iter=max_iterations,
+                curr_iter=i,
             )
 
             messages = []
@@ -149,23 +177,30 @@ def agentic_llm(
             messages.append({"role": "user", "content": prompt})
 
             # R1: let the model decide if it wants tools
-            client = get_openai_client()
+            filtered_tools = filter_used_tools(tools, used_tools)
+            if i == max_iterations - 1:
+                filtered_tools = []
+
             r1 = client.chat.completions.create(
                 model=model,
                 messages=messages,
-                tools=tools,
+                tools=filtered_tools,
                 tool_choice="auto",
                 temperature=temperature,
                 max_tokens=max_tokens,
             )
             m1 = r1.choices[0].message
             tool_calls = getattr(m1, "tool_calls", None) or []
+            tool_calls = tool_calls[
+                :tools_per_iter
+            ]  #!! WHY DOES IT KEEP SELECTING BOTH PZBMED AND WIKIPEDIA TOOL ON THE SECOND ITER?
+            # tool_calls = [c for c in tool_calls if c.function.name in {"pubmed_search", "wikipedia_search"}][:1]
 
             # If last try or no tools were called, we’re done
             if i == max_iterations - 1 or not tool_calls:
                 usage = getattr(r1, "usage", None)
-                return LLMResponse(
-                    text=m1.content or "",
+                final_response = LLMResponse(
+                    text=m1.content,
                     model=model,
                     prompt_tokens=getattr(usage, "prompt_tokens", 0) if usage else 0,
                     completion_tokens=(
@@ -175,12 +210,30 @@ def agentic_llm(
                     used_tools=used_tools,
                 )
 
+                citations = (
+                    []
+                    if not used_tools
+                    else [format_citation(d) for d in search_results]
+                )
+                return final_response, citations
+
             # Execute tool calls
             tool_messages = []
             for call in tool_calls:
                 name = call.function.name
                 args = json.loads(call.function.arguments or "{}")
+
+                # Add local parameter for functions that support it
+                if name in function_map:
+                    func = function_map[name]
+                    import inspect
+
+                    sig = inspect.signature(func)
+                    if "local" in sig.parameters:
+                        args["local"] = local
+
                 result = function_map[name](**args)
+
                 tool_messages.append(
                     {
                         "role": "tool",
@@ -192,6 +245,7 @@ def agentic_llm(
                 used_tools.append((name, result))
                 search_queries.append(str(args))
                 previous_actions.append(f"TOOL:{name}({args})")
+
                 if isinstance(result, list):
                     search_results.extend(result)
                 elif isinstance(result, dict) and "hits" in result:
@@ -206,6 +260,12 @@ def agentic_llm(
                 }
             )
             messages.extend(tool_messages)
+
+            print("tool_messages: ", tool_messages)
+            print("used_tools: ", used_tools)
+            print("search_queries: ", search_queries)
+            print("previous_actions: ", previous_actions)
+
     except Exception as e:
         return LLMResponse(
             text=f"Error calling LLM: {e}",
@@ -225,8 +285,8 @@ if __name__ == "__main__":
     # from qdrant_client import QdrantClient
     # from search.es_search import wait_for_es
 
-    print("ES_URL:", os.getenv("ES_URL"))
-    print("QDRANT_URL:", os.getenv("QDRANT_URL"))
+    # print("ES_URL:", os.getenv("ES_URL"))
+    # print("QDRANT_URL:", os.getenv("QDRANT_URL"))
 
     print("🤖 OpenAI Client Test")
     print("=" * 50)
@@ -251,16 +311,18 @@ if __name__ == "__main__":
     test_query = "What are the connections between prolonged corticosteroid use and femoral avascular necrosis?"
 
     # Run the agent loop (max_iterations defaults to 3 inside agentic_llm)
-    result = agentic_llm(
+    result, out_citations = agentic_llm(
         query=test_query,
         settings=settings,
         model=DEFAULT_MODEL,
         temperature=0.1,
         max_tokens=500,
+        local=True,
     )
 
     print("— Response —")
     print(result.text)
+    print("citations: ", out_citations)
 
     print("\n— Usage —")
     print(f"Model: {result.model}")

@@ -127,9 +127,8 @@ class MedicalRAG_UI:
         assistant_msg = {
             "role": "assistant",
             "content": response["answer"],
-            # "sources": response.get("sources", [])
         }
-        if response.get("sources"):
+        if response["sources"] != []:
             assistant_msg["sources"] = response["sources"]
 
         st.session_state.chat_messages.append(assistant_msg)

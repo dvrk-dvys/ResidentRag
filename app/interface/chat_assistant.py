@@ -12,7 +12,10 @@ class ChatAssistant:
         self.chat_messages = [{"role": "developer", "content": self.developer_prompt}]
 
     def query_llm(self, query, settings):
-        return agentic_llm(query=query, settings=settings)
+        result, out_citations = agentic_llm(
+            query=query,
+            settings=settings,
+        )
 
     def process_message(self, question, settings):
         if question.strip().lower() == "stop":
@@ -23,12 +26,13 @@ class ChatAssistant:
             {"role": "user", "content": question}
         )  # todo: add the results of the llm with tools to the messages
 
-        response = self.query_llm(query=question, settings=settings)
+        response, out_citations = self.query_llm(query=question, settings=settings)
 
         resp = {
             "answer": response.text,
             "model": response.model,
             "tokens": response.total_tokens,
+            "citations": out_citations,
         }
         return resp
 
