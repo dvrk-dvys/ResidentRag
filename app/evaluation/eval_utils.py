@@ -81,7 +81,7 @@ def ndcg_at_k(pred_ids, gold_ids, top_k=10):
     return (dcg / idcg) if idcg > 0 else 0.0
 
 
-def evaluate(gt, retriever, top_k=10):
+def evaluate(gt, retriever, top_k=10, local=False):
     """
     Runs all metrics and averages across queries.
     - gt_rows: [{"query": "...", "doc_id": "X"}] or [{"query": "...", "doc_ids": ["X","Y"]}]
@@ -92,7 +92,7 @@ def evaluate(gt, retriever, top_k=10):
     for row in gt:
         gold_ids = row.get("doc_ids") or [row["doc_id"]]
 
-        preds = retriever(row["query"], top_k=top_k) or []
+        preds = retriever(row["query"], top_k=top_k, local=local) or []
         if preds and hasattr(preds[0], "id"):
             pred_ids = [p.id for p in preds][:top_k]
         else:

@@ -1,10 +1,13 @@
 import json
 import os
-from dataclasses import dataclass
-from typing import Dict, Iterable, List, Optional
+
+from dotenv import load_dotenv
+
+load_dotenv()
 
 from evaluation.eval_utils import evaluate
 from qdrant_client import QdrantClient
+from search.search_utils import Hit
 from sentence_transformers import SentenceTransformer
 
 # Configuration - matches your ingest script
@@ -16,57 +19,44 @@ EMBED_DEVICE = os.getenv(
 )  # 'cpu' by default in containers mps on local machine
 
 # Globals
-_QDRANT = None
-_EMBED = None
+QDRANT = None
+EMBED = None
 
 
-def get_client():
-    global _QDRANT
-    if _QDRANT is None:
-        # _QDRANT = QdrantClient(
-        #    host="localhost", port=6333, grpc_port=6334,
-        #    prefer_grpc=True, timeout=30
-        # ) ->         # Use REST; it avoids gRPC port issues and works out of the box
-
-        _QDRANT = QdrantClient(url=QDRANT_URL, prefer_grpc=False, timeout=30)
-
-    return _QDRANT
+def get_qdrant_client(local=False):
+    global QDRANT
+    if QDRANT is None:
+        if local:
+            url = os.getenv("QDRANT_LOCAL_URL", "http://localhost:6333")
+        else:
+            url = os.getenv("QDRANT_URL", "http://qdrant:6333")
+        QDRANT = QdrantClient(url, prefer_grpc=False, timeout=30)
+    return QDRANT
 
 
 def get_model():
-    global _EMBED
-    if _EMBED is None:
+    global EMBED
+    if EMBED is None:
         # Use MPS on Apple Silicon; falls back to CPU if unavailable
         # device = "mps" if SentenceTransformer(MODEL_NAME).device.type != "cuda" else "cuda"
-        _EMBED = SentenceTransformer(MODEL_NAME, device=EMBED_DEVICE)
-    return _EMBED
+        EMBED = SentenceTransformer(MODEL_NAME, device=EMBED_DEVICE)
+    return EMBED
 
 
-@dataclass
-class Hit:
-    #'Hit' as in the hybrid search has found some options
-    id: str
-    title: str
-    text: str
-    rrf_score: float = 0.0
-    source_type: Optional[str] = None
-
-    # ?ADD  OTHER SCORES HERE TOO?
-
-
-def search_qdrant(query, top_k=5):
+def search_qdrant(query, top_k=5, local=False):
     """
     Simple semantic search using Qdrant for medical data
     """
     # Initialize clients (same as your ingest)
-    client = QdrantClient(QDRANT_URL)
-    model = SentenceTransformer(MODEL_NAME)
+    # client = QdrantClient(QDRANT_URL)
+    QDRANT_CLIENT = get_qdrant_client(local=local)
+    MODEL = get_model()  # Use cached model instead of recreating
 
     # Create query embedding (normalized, matching ingest)
-    query_vector = model.encode([query], normalize_embeddings=True)[0].tolist()
+    query_vector = MODEL.encode([query], normalize_embeddings=True)[0].tolist()
 
     # Search
-    search_results = client.search(
+    search_results = QDRANT_CLIENT.search(
         collection_name=COLLECTION_NAME,
         query_vector=query_vector,
         limit=top_k,
@@ -98,15 +88,15 @@ def search_qdrant(query, top_k=5):
     return results
 
 
-def qdrant_ids(query: str, limit: int = 50) -> list[str]:
-    client = get_client()
+def qdrant_ids(query, limit=50):
+    QDRANT_CLIENT = get_qdrant_client()
     model = get_model()
     vec = model.encode(
         [query], normalize_embeddings=True, batch_size=32, convert_to_numpy=True
     )[0]
 
     try:
-        res = client.query_points(
+        res = QDRANT_CLIENT.query_points(
             collection_name=COLLECTION_NAME,
             query=vec.tolist(),
             limit=limit,
@@ -115,7 +105,7 @@ def qdrant_ids(query: str, limit: int = 50) -> list[str]:
             search_params={"hnsw_ef": 128, "exact": False},
         ).points
     except Exception:
-        res = client.search(
+        res = QDRANT_CLIENT.search(
             collection_name=COLLECTION_NAME,
             query_vector=vec.tolist(),
             limit=limit,
@@ -127,13 +117,15 @@ def qdrant_ids(query: str, limit: int = 50) -> list[str]:
 
 if __name__ == "__main__":
 
-    ground_truth_path = "//data/evaluation/ground_truth.json"
+    ground_truth_path = (
+        "/Users/jordanharris/Code/ResidentRAG/data/evaluation/ground_truth.json"
+    )
     with open(ground_truth_path, "r", encoding="utf-8") as f:
         gt_raw = json.load(f)
     gt = [{"query": row["question"], "doc_id": row["doc_id"]} for row in gt_raw]
 
     top_k = 5
-    metrics = evaluate(gt, search_qdrant, top_k=top_k)
+    metrics = evaluate(gt, search_qdrant, top_k=top_k, local=True)
 
     hit = metrics[f"Hit@{top_k}"]
     mrr = metrics[f"MRR@{top_k}"]
@@ -159,7 +151,7 @@ if __name__ == "__main__":
     for query in test_queries:
         print(f"\n📋 Query: '{query}'")
         try:
-            results = search_qdrant(query, top_k=top_k)
+            results = search_qdrant(query, top_k=top_k, local=True)
             print(f"✅ Found {len(results)} results:")
 
             for i, result in enumerate(results, 1):

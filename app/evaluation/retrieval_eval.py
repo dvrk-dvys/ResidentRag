@@ -1,29 +1,42 @@
 import json
 import os
 
+from dotenv import load_dotenv
+
+load_dotenv()  # Load environment variables from .env file
+
 from elasticsearch import Elasticsearch
 from evaluation.eval_utils import evaluate
 from qdrant_client import QdrantClient
-from search.es_search import search_elasticsearch, wait_for_es
+from search.es_search import search_elasticsearch
 from search.hybrid_search import hybrid_search
-from search.qdrant_search import search_qdrant
+from search.qdrant_search import get_model, search_qdrant
 from sentence_transformers import SentenceTransformer
 
-# ElasticSearch Config
+# Configuration - no client instantiation at module level
 ES_URL = os.getenv("ES_URL", "http://localhost:9200")
 ES_INDEX = os.getenv("ES_INDEX", "medical_docs")
-ES_CLIENT = Elasticsearch(ES_URL, request_timeout=30)
-wait_for_es(ES_CLIENT)
-
-
-# Qdrant Config
 QDRANT_URL = os.getenv("QDRANT_URL", "http://localhost:6333")
 QDRANT_COLLECTION = os.getenv("QDRANT_COLLECTION", "medical_rag_sparse")
 MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
 
 
-QDRANT_CLIENT = QdrantClient(QDRANT_URL, timeout=30, prefer_grpc=False)
-EMBED_MODEL = SentenceTransformer(MODEL_NAME)
+def get_es_client(local=False):
+    """Get ES client with correct URL based on environment"""
+    if local:
+        url = os.getenv("ES_LOCAL_URL", "http://localhost:9200")
+    else:
+        url = os.getenv("ES_URL", "http://elasticsearch:9200")
+    return Elasticsearch(url, request_timeout=30)
+
+
+def get_qdrant_client(local=False):
+    """Get Qdrant client with correct URL based on environment"""
+    if local:
+        url = os.getenv("QDRANT_LOCAL_URL", "http://localhost:6333")
+    else:
+        url = os.getenv("QDRANT_URL", "http://qdrant:6333")
+    return QdrantClient(url, timeout=30, prefer_grpc=False)
 
 
 if __name__ == "__main__":

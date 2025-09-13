@@ -10,10 +10,9 @@ from Bio import Entrez
 ENTREZ_EMAIL = os.getenv("ENTREZ_EMAIL")
 Entrez.email = ENTREZ_EMAIL
 
-from typing import Any, Dict, List, Optional
 
 import numpy as np
-from tool_utils import chunk_text
+from tools.tool_utils import chunk_text
 
 from app.search.qdrant_search import get_model
 

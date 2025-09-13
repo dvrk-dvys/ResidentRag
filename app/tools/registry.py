@@ -1,5 +1,6 @@
 from typing import Any, Dict
 
+from search.search_utils import Hit
 from tools.search_pubmed import PubMedTool
 from tools.search_wikipedia import WikipediaTool
 
@@ -9,12 +10,12 @@ WIKI = WikipediaTool()
 PUBMED = PubMedTool()
 
 
-def simple_response_ok(query: str) -> Dict[str, Any]:
+def simple_response_ok(query):
     """
     Signal to the LLM that this is general/non-medical chat
     and it should answer directly without retrieval.
 
-    Returning a small JSON payload is clearer to the model
+    Returning a small JSON payload is clearer to the llm
     than just the string "OK".
     """
     return {
@@ -25,18 +26,14 @@ def simple_response_ok(query: str) -> Dict[str, Any]:
     }
 
 
-def tool_hybrid_search(self, query, top_k=5):
-    try:
-        hits = hybrid_search(query, top_k=top_k)
-    except Exception as e:
-        print(f"Error in hybrid search: {e}")
-        return []
+def tool_hybrid_search(query: str, top_k: int = 5) -> list[dict]:
+    hits: list[Hit] = hybrid_search(query, top_k=top_k)
     return [
         {
             "id": h.id,
             "title": h.title,
             "text": h.text,
-            "rrf_score": getattr(h, "rrf_score", 0.0),
+            "rrf_score": float(getattr(h, "rrf_score", 0.0)),
             "source_type": getattr(h, "source_type", None),
         }
         for h in hits
@@ -44,10 +41,10 @@ def tool_hybrid_search(self, query, top_k=5):
 
 
 FUNCTION_MAP = {
-    "hybrid_search": WIKI.tool_hybrid_search,
-    "wikipedia_search": tool_hybrid_search,
+    "hybrid_search": tool_hybrid_search,
+    "wikipedia_search": WIKI.wiki_semantic_search,
     "pubmed_search": PUBMED.pubmed_semantic_search,
-    "simple_response_ok": lambda query: "OK",
+    # "simple_response_ok": simple_response_ok,
 }
 
 TOOLS_JSON = [
@@ -114,17 +111,17 @@ TOOLS_JSON = [
             },
         },
     },
-    {
-        "type": "function",
-        "function": {
-            "name": "simple_response_ok",
-            "description": "Signal this is general chat; answer directly without retrieval.",
-            "parameters": {
-                "type": "object",
-                "properties": {"query": {"type": "string"}},
-                "required": ["query"],
-                "additionalProperties": False,
-            },
-        },
-    },
+    # {
+    #    "type": "function",
+    #    "function": {
+    #        "name": "simple_response_ok",
+    #        "description": "Signal this is general chat; answer directly without retrieval.",
+    #        "parameters": {
+    #            "type": "object",
+    #            "properties": {"query": {"type": "string"}},
+    #            "required": ["query"],
+    #            "additionalProperties": False,
+    #        },
+    #    },
+    # },
 ]

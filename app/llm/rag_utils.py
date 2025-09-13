@@ -1,154 +1,147 @@
-import json
-import locale
-import os
-from datetime import datetime
-from typing import Dict, List
-
-from llm.openai_client import client, llm
-from search.hybrid_search import Hit, hybrid_search
-
 # todo CHAT HISTORY/MEMORY
+import time
+from contextlib import contextmanager
+from datetime import datetime
 
-# <QUESTION>
-# {question}
-# </QUESTION>
-
-# <DATA>
-# {data}
-# </DATA>
-#
-#
+from search.search_utils import Hit
+from tools.registry import TOOLS_JSON
 
 
-medical_context_template = """
+@contextmanager
+def time_block(label: str):
+    start = time.perf_counter()
+    try:
+        yield
+    finally:
+        dur = (time.perf_counter() - start) * 1000  # ms
+        print(f"[TIMER] {label}: {dur:.2f} ms")
 
-You are a medical llm Resident Assistant answering questions to the best of your ability using wikipedia PubMed research papers and textbook
-documents/shards in your corpus as your source of information. Your job is to bridge the gap between the users request and the specific
-highly technical academic speech patterns of your source documentation. When you experience a lack of information or require a citation,
-feel free to utilize the TOOLS available to you.
 
+MEDICAL_SYSTEM_CONTEXT_TEMPLATE = """
 
-Safety: do not provide personalized medical advice; flag emergencies.
+ROLE:
+You are a medical llm Resident Assistant answering a QUESTION to the best of your ability with your own knowledge and provided CONTEXT.
+
+TASK:
+- Your job is to bridge the gap between the users request and the specific highly technical academic speech patterns of your source documentation in the CONTEXT.
+- The CONTEXT is built using wikipedia PubMed research papers and textbook documents/shards in your corpus as your source of information.
+- At the beginning of the conversation the CONTEXT is empty.
+- When you experience a lack of information or require a citation, feel free to utilize the TOOLS available to you to answer the question.
+- If you cannot answer the question using CONTEXT, TOOL, or your own knowledge, tell the user this and prompt for more information or ask if there are any other question that you can help with.
+
+The citation to provide in your corpus CONTEXT provided answer is the HIT.title value in the HIT dataclass.
+
+Safety: do not provide personalized medical advice; flag emergencies and tell the user to seek medical assistance.
 Style: plain language first; concise; SI units; define acronyms once.
 Locale: {locale}; Language: {language}; Today: {today_iso}
 
-
+SYSTEM CONTEXT:
 <USER_CONTEXT>
 {user_context}
 </USER_CONTEXT>
 
- <RESPONSE_DETAIL_CONTEXT>
- {response_detail_context}
- </RESPONSE_DETAIL_CONTEXT>
+- The citations and url links may only come from the knowledge base corpus or TOOLS output.
+
+<RESPONSE_DETAIL_CONTEXT>
+{response_detail_context}
+</RESPONSE_DETAIL_CONTEXT>
+
 """.strip()
 # ????? {conversation_history}
 
-old_basic_llm_prompt_template = """
-Question: {question}
-
-Please provide a helpful conversational chat response based on your training knowledge. Use your expertise to give accurate, evidence-based information
-while being appropriately cautious about medical advice. This is for general chat, pleasantries, clarifications,
-or discussions about previous/future medical queries - not for direct medical questions that require literature search.
-""".strip()
-
-basic_llm_prompt_template = """
-Answer the user’s question briefly and directly.
-
-Question: {question}
-""".strip()
-
-
-search_prompt_template = """
-Question: {question}
-
-Context from medical literature:
-{context_data}
-
-Please answer the question based on the provided context and data sources from our ElasticSearch + Qdrant hybrid retriever.
-If the data doesn't contain sufficient information, acknowledge this and provide your best approximation of the answer using the information that is available.
-""".strip()
-
-
-OLD_medical_agent_prompt = """
-You are a medical research assistant. Your goal is to answer: {question}
-
-AVAILABLE ACTIONS:
-- MEDICAL_SEARCH: Search medical literature/knowledge base
-- CONVERSATION_SEARCH: Search previous conversation context
-- FINAL_ANSWER: Provide complete answer with sources
-- CLARIFICATION_NEEDED: Ask user for more specific information
-
-CURRENT CONTEXT:
-{context}
-
-PREVIOUS SEARCHES: {search_queries}
-PREVIOUS ACTIONS: {previous_actions}
-
-ITERATION: {iteration_number}/{max_iterations}
-
-Respond with JSON in this format:
-{{
-    "reasoning": "Why you chose this action",
-    "action": "MEDICAL_SEARCH|CONVERSATION_SEARCH|FINAL_ANSWER|CLARIFICATION_NEEDED",
-    "keywords": ["search", "terms"] // if MEDICAL_SEARCH
-    "context_query": "search terms" // if CONVERSATION_SEARCH
-    "answer": "detailed response with citations" // if FINAL_ANSWER
-    "clarification_request": "what you need to know" // if CLARIFICATION_NEEDED
-    "confidence": 0.8 // how confident you are (0-1)
-}}
-"""
-
 
 # === System prompt (tool-aware, compact) ===
-MEDICAL_AGENT_SYSTEM = """
-ROLE:
-You are a careful medical research assistant.
-
+MEDICAL_AGENTIC_PROMPT_TEMPLATE = """
 TASK:
-- Answer user questions accurately and succinctly.
+- Answer the user provided QUESTION accurately and succinctly.
 - Prefer medical primary/secondary sources and cite them when available.
+- If the context doesn't contain the answer, use your own knowledge to answer the question
+
+<QUESTION>
+{question}
+</QUESTION>
 
 CONTEXT:
-{user_context} {detail_context}
+
+<CONTEXT>
+{context}
+</CONTEXT>
+
+You can perform the following actions:
+
+- ANSWER_CONTEXT: the question using the CONTEXT provided by the search results
+- ANSWER: the question using your own knowledge.
+- TOOL: Use one of the available tools to help answer the question
 
 TOOLS (use only if needed):
-- hybrid_search(query, top_k=5): Retrieve medical literature from ElasticSearch+Qdrant (preferred for clinical/mechanistic queries).
-- wikipedia_lookup(query, top_k=5): Retrieve short background/definitions when medical coverage is thin or user needs lay context.
-- pubmed_lookup(query, top_k=5): Pull recent/targeted abstracts from PubMed when recency or specificity is important.
-- simple_response_ok(query): Signal that this is general chat; answer directly without retrieval.
+
+<TOOLS>
+{tools}
+</TOOLS>
 
 REASONING (internal to you; don’t expose unless asked):
 - First decide if you can answer directly from general knowledge.
 - If not, call exactly one tool that best fits the intent. Avoid chaining tools unless strictly necessary.
+- If you decide to use a SEARCH TOOL, call HYBRID_SEARCH first to build/refresh CONTEXT from the local corpus.
+- Only if HYBRID_SEARCH is insufficient, call exactly one supplemental tool (PUBMED_SEARCH or WIKIPEDIA_SEARCH). Return the supplemental evidence; the system will handle any reranking/merging before answering.
 - If tool output is low-relevance, say so briefly and answer with the best available information.
 
 OUTPUT FORMAT:
 - If you used a tool, synthesize a brief answer (3–6 sentences) and list compact citations with titles (and URLs if provided).
-- If you did not use a tool, answer briefly and clearly, and avoid invented citations.
-- Use plain language for patients; use technical phrasing for clinicians/researchers.
+- If you did not use a tool, answer briefly and clearly, and never invent fake citations.
+- The citations and url links may only come from the knowledge base or tool output.
+
+If you can answer the QUESTION using CONTEXT, use this template:
+
+{{
+"action": "ANSWER_CONTEXT",
+"answer": "<your answer>",
+"source": "CONTEXT"
+}}
+
+If you can, use your own knowledge to answer the question:
+
+{{
+"action": "ANSWER",
+"answer": "<your answer>",
+"source": "OWN_KNOWLEDGE"
+}}
+
+If you want to use a tool, use this template:
+
+{{
+"action": "TOOL",
+"reasoning": "<add your reasoning here>",
+"keywords": ["search query 1", "search query 2", ...]
+}}
+
 
 STOP CONDITIONS:
-- Stop once you’ve answered the question directly and, if applicable, provided ≤3 high-value citations.
-"""
+- Stop once you’ve answered the question directly and, if applicable, providing ≤3 high-value citations.
+- Stop if the user indicates that they are finished with the conversation.
+- If you cannot answer the question using CONTEXT or your own knowledge, tell the user this and end the conversation.
 
-# === User/message prompt (injects conversation + optional retrieved context) ===
-MEDICAL_AGENT_USER = """
-QUESTION:
-{question}
+RULES:
+-Don't perform more than {max_iterations} iterations for a given student question.
+The current iteration number: {iteration_number}. If we exceed the allowed number
+of iterations, give the best possible answer with the provided information.
+-Don't use search queries used at the previous iterations.
+-Don't repeat previously performed actions.
 
-CURRENT CONTEXT:
-{context}
 
-PREVIOUS SEARCHES:
+
+SEARCH_QUERIES contains the queries that were used to retrieve the CONTEXT documents.
+
+<SEARCH_QUERIES>
 {search_queries}
+</SEARCH_QUERIES>
 
-PREVIOUS ACTIONS:
+PREVIOUS_ACTIONS contains the actions you already performed.
+
+<PREVIOUS_ACTIONS>
 {previous_actions}
+</PREVIOUS_ACTIONS>
 
-INSTRUCTIONS:
-- Use tools only if they materially improve the answer.
-- If you call a tool, do so once with minimal arguments (usually the user’s question).
-- After any tool result is returned, write the final answer that cites those results.
 """
 
 
@@ -167,23 +160,48 @@ def build_settings_context(settings):
         "Technical": "Include technical details, medical terminology, and specific mechanisms.",
     }
 
+    tool_bias_map = {
+        (
+            "Patient",
+            "Simple",
+        ): "Prefer WIKIPEDIA_SEARCH for simple explanations and definitions.",
+        (
+            "Patient",
+            "Detailed",
+        ): "Prefer WIKIPEDIA_SEARCH first, then PUBMED_SEARCH if more evidence is needed.",
+        (
+            "Healthcare Provider",
+            "Technical",
+        ): "Prefer PUBMED_SEARCH for research-backed evidence.",
+        (
+            "Medical Researcher",
+            "Technical",
+        ): "Strongly prefer PUBMED_SEARCH to gather primary literature.",
+    }
+
+    tool_bias = tool_bias_map.get(
+        (settings["user_type"], settings["response_detail"]),
+        "Use HYBRID_SEARCH first; then choose PUBMED_SEARCH for medical/research questions or WIKIPEDIA_SEARCH for definitions/background.",
+    )
+
     return {
         "user_context": user_contexts.get(settings["user_type"]),
         "response_detail_context": response_detail_contexts.get(
             settings["response_detail"]
         ),
         "show_sources": settings["show_sources"],
+        "tool_bias": tool_bias,
     }
 
 
 def build_rag_context(settings):
     """Build context string with source formatting based on user preferences"""
     # TODO: LANGUAGE SETTING IN APP
-    today_iso = datetime.now().isoformat()
+    today_iso = datetime.now().isoformat(timespec="seconds")
     # loc = locale.getdefaultlocale()
     # locale_str = f"{loc[0].replace('_', '-')}" if loc and loc[0] else "en-US"
     settings_context = build_settings_context(settings=settings)
-    return medical_context_template.format(
+    return MEDICAL_SYSTEM_CONTEXT_TEMPLATE.format(
         locale="de-DE",  # locale_str :that way the LLM knows whether to use °F vs °C, mg/dL vs mmol/L, spelling (hemoglobin vs haemoglobin), etc.
         language="English",
         today_iso=today_iso,
@@ -192,16 +210,18 @@ def build_rag_context(settings):
     )
 
 
-def build_rag_prompt(query, settings, search_results=None):
-    #! todo!!
-    """Build RAG prompt with search results using template injection"""
-    if not search_results:
-        context_text = "No medical literature search was performed for this query."
-        return basic_llm_prompt_template.format(
-            question=question, context_data=context_text
-        )
+def build_rag_prompt(
+    question,
+    settings,
+    tools=TOOLS_JSON,
+    search_results=[],
+    search_queries=[],
+    previous_actions=[],
+    max_iterations=3,
+    iteration_number=0,
+):
 
-    elif settings["show_sources"]:
+    if settings.get("show_sources", True):
         context_text = "\n\n".join(
             [
                 f"Source: {doc.title}\nContent: {doc.text}\nRelevance Score: {doc.rrf_score:.3f}"
@@ -211,257 +231,82 @@ def build_rag_prompt(query, settings, search_results=None):
     else:
         context_text = "\n\n".join([doc.text for doc in search_results])
 
-    return search_prompt_template.format(question=question, context_data=context_text)
+    tool_info = "\n".join(
+        [
+            f"- {t['function']['name']}: {t['function']['description']}"
+            for t in tools
+            if t.get("type") == "function" and "function" in t
+        ]
+    )
+
+    return MEDICAL_AGENTIC_PROMPT_TEMPLATE.format(
+        question=question,
+        context=context_text,
+        tools=tool_info,
+        search_results=search_results,
+        search_queries="\n".join(search_queries),
+        previous_actions="\n".join(previous_actions),
+        max_iterations=max_iterations,
+        iteration_number=iteration_number,
+    )
 
 
 # --------------------------------------------------------------------------------
 
 
-def build_prompt(query, search_results):
-    """
-    Build a medical RAG prompt from query and search results
-    """
-    prompt_template = """
-You're a medical assistant. Answer the QUESTION based on the CONTEXT from medical literature. Use only the facts from the CONTEXT when answering the QUESTION.
-
-If you cannot find a direct answer, try to formulate a response based on what is medically relevant in the CONTEXT. Always be cautious with medical advice and suggest consulting healthcare professionals when appropriate.
-
-If the CONTEXT completely doesn't contain the answer or anything similar, output NONE.
-
-QUESTION: {question}
-
-CONTEXT: {context}
-""".strip()
-
-    context = ""
-
-    for doc in search_results:
-        context += f"Source: {doc.get('source_type', 'unknown')}\n"
-        context += f"Title: {doc.get('title', '')}\n"
-        context += f"Content: {doc.get('text', '')}\n\n"
-
-    prompt = prompt_template.format(question=query, context=context).strip()
-    return prompt
-
-
-def rag_with_search(query, search_function, **search_kwargs):
-    """
-    Generic RAG function that works with any search method
-    """
-    # Get search results
-    search_results = search_function(query, **search_kwargs)
-
-    # Build prompt
-    prompt = build_prompt(query, search_results)
-
-    # Get LLM answer
-    answer = llm(prompt)
-
-    return {
-        "query": query,
-        "answer": answer,
-        "search_results": search_results,
-        "num_results": len(search_results),
-    }
-
-
-# Build context from search results
-def build_medical_context(search_results: List[Hit]) -> str:
-    context = ""
-    for doc in search_results:
-        context += (
-            f"source: {doc.source_type}\ntitle: {doc.title}\ncontent: {doc.text}\n\n"
-        )
-    return context.strip()
-
-
-# Phase 1: Simple Medical RAG
-medical_prompt_template = """
-You're a medical AI assistant. Answer the QUESTION based on the CONTEXT from medical literature.
-Use only the facts from the CONTEXT. If the context doesn't contain sufficient information, say so.
-
-<QUESTION>
-{question}
-</QUESTION>
-
-<CONTEXT>
-{context}
-</CONTEXT>
-""".strip()
-
-
-def simple_medical_rag(question: str) -> str:
-    search_results = hybrid_search(question, top_k=5)
-    # search_results = None
-    context = build_medical_context(search_results)
-
-    messages = [
-        {
-            "role": "user",
-            "content": medical_prompt_template.format(
-                question=question, context=context
-            ),
+# ------------------------------
+# Quick test harness for prompts
+# ------------------------------
+if __name__ == "__main__":
+    with time_block("TOTAL"):
+        # --- sample settings (simulate your UI controls) ---
+        settings = {
+            "user_type": "Healthcare Provider",  # "Healthcare Provider" | "Medical Researcher" | "Patient"
+            "response_detail": "Detailed",  # "Simple" | "Detailed" | "Technical"
+            "show_sources": True,
         }
-    ]
 
-    response = client.chat.completions.create(model="gpt-4o-mini", messages=messages)
+        # --- sample question ---
+        question = "What are the first-line treatments for community-acquired pneumonia in adults?"
 
-    return response.choices[0].message.content
-
-
-# Phase 2: Decision Medical RAG
-medical_decision_template = """
-You're a medical AI assistant.
-
-<QUESTION>
-{question}
-</QUESTION>
-
-<CONTEXT>
-{context}
-</CONTEXT>
-
-If CONTEXT is EMPTY or insufficient for a medical question, search for more information:
-{{
-"action": "SEARCH",
-"reasoning": "<why you need more medical information>"
-}}
-
-If CONTEXT contains sufficient medical information:
-{{
-"action": "ANSWER",
-"answer": "<your evidence-based answer>",
-"sources": ["pubmed", "textbook", "wikipedia"]
-}}
-""".strip()
-
-
-def decision_medical_rag(question: str) -> dict:
-    search_results = hybrid_search(question, top_k=5)
-    # search_results = None
-
-    context = build_medical_context(search_results)
-
-    messages = [
-        {
-            "role": "user",
-            "content": medical_decision_template.format(
-                question=question, context=context
+        # --- sample search results (pretend these came from hybrid search) ---
+        sample_results = [
+            Hit(
+                id="pubmed23n0001_7",
+                title="Lysosomal hydrolases of the epidermis. 2. Ester hydrolases.",
+                text="Five distinct ester hydrolases (EC 3-1) have been characterized in guinea-pig epidermis...",
+                rrf_score=0.912,
+                source_type="pubmed",
             ),
-        }
-    ]
-
-    response = client.chat.completions.create(model="gpt-4o-mini", messages=messages)
-
-    try:
-        return json.loads(response.choices[0].message.content)
-    except:
-        return {"action": "ANSWER", "answer": response.choices[0].message.content}
-
-
-# Phase 3: Agentic Medical RAG
-medical_agentic_template = """
-You're a medical AI assistant specializing in evidence-based responses.
-
-<QUESTION>
-{question}
-</QUESTION>
-
-<PREVIOUS_SEARCHES>
-{search_queries}
-</PREVIOUS_SEARCHES>
-
-<CONTEXT>
-{context}
-</CONTEXT>
-
-<PREVIOUS_ACTIONS>
-{previous_actions}
-</PREVIOUS_ACTIONS>
-
-Current iteration: {iteration_number}/{max_iterations}
-
-Actions available:
-- SEARCH: Find more medical literature
-- ANSWER_EVIDENCE: Answer using provided medical evidence
-- ANSWER_INSUFFICIENT: Acknowledge insufficient evidence
-
-{{
-"action": "SEARCH",
-"reasoning": "<medical reasoning>",
-"keywords": ["medical term 1", "drug name", "condition"]
-}}
-""".strip()
-
-
-def agentic_medical_rag(question: str, max_iterations: int = 3) -> dict:
-    search_queries = []
-    previous_actions = []
-    context = ""
-
-    for iteration in range(1, max_iterations + 1):
-        messages = [
-            {
-                "role": "user",
-                "content": medical_agentic_template.format(
-                    question=question,
-                    search_queries="\n".join(search_queries),
-                    context=context,
-                    previous_actions="\n".join(previous_actions),
-                    iteration_number=iteration,
-                    max_iterations=max_iterations,
-                ),
-            }
+            Hit(
+                id="Anatomy_Gray_2",
+                title="Anatomy_Gray",
+                text="How can gross anatomy be studied? The term anatomy is derived from the Greek word temnein...",
+                rrf_score=0.731,
+                source_type="textbook",
+            ),
         ]
 
-        response = client.chat.completions.create(
-            model="gpt-4o-mini", messages=messages
-        )
+        with time_block("build_rag_context"):
+            sys_prompt = build_rag_context(settings)
 
-        try:
-            result = json.loads(response.choices[0].message.content)
-        except:
-            result = {
-                "action": "ANSWER_EVIDENCE",
-                "answer": response.choices[0].message.content,
-            }
-
-        if result.get("action") == "SEARCH":
-            query = (
-                result.get("keywords", [question])[0]
-                if result.get("keywords")
-                else question
+        with time_block("build_rag_prompt"):
+            user_prompt = build_rag_prompt(
+                question=question,
+                settings=settings,
+                tools=TOOLS_JSON,
+                search_results=sample_results,
+                search_queries=["community acquired pneumonia first line"],
+                previous_actions=[
+                    "TOOL:hybrid_search({'query': 'community acquired pneumonia'})"
+                ],
+                max_iterations=3,
+                iteration_number=0,
             )
-            search_results = hybrid_search(query, top_k=5)
-            # search_results = None
 
-            context += build_medical_context(search_results) + "\n\n"
-            search_queries.append(query)
-            previous_actions.append(f"SEARCH: {query}")
-        else:
-            return result
+        # --- print for eyeballing ---
+        print("\n================= SYSTEM PROMPT =================\n")
+        print(sys_prompt)
 
-    return {
-        "action": "ANSWER_INSUFFICIENT",
-        "answer": "Could not find sufficient information after multiple searches",
-    }
-
-
-if __name__ == "__main__":
-    while True:
-        question = input("Medical question: ")
-        if question == "stop":
-            break
-
-        print("\n=== Simple RAG ===")
-        simple_answer = simple_medical_rag(question)
-        print(simple_answer)
-
-        print("\n=== Decision RAG ===")
-        decision_result = decision_medical_rag(question)
-        print(decision_result)
-
-        print("\n=== Agentic RAG ===")
-        agentic_result = agentic_medical_rag(question)
-        print(agentic_result)
-        print("-" * 50)
+        print("\n================== USER PROMPT ==================\n")
+        print(user_prompt)

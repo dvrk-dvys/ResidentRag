@@ -52,7 +52,7 @@ def iter_docs() -> Iterable[Dict]:
                 "source_type": source_type,  # derived from file
                 "title": d.get("title", ""),
                 "text": d.get("text", ""),
-                "wiki_id": d.get("wiki_id", ""),
+                # "wiki_id": d.get("wiki_id", ""),
                 "source": d.get("source", ""),
                 "url": d.get("url", None),  # only if present
             }
@@ -159,7 +159,7 @@ if __name__ == "__main__":
                 "source_type": {"type": "keyword"},  # wikipedia | textbook | pubmed
                 "title": {"type": "text", "analyzer": "english"},
                 "text": {"type": "text", "analyzer": "english"},
-                "wiki_id": {"type": "keyword"},
+                # "wiki_id": {"type": "keyword"},
                 "source": {"type": "keyword"},
                 "url": {"type": "keyword"},
                 "text_vector": {

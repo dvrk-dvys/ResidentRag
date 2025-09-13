@@ -55,7 +55,7 @@ def iter_docs() -> Iterable[Dict]:
                 "source_type": source_type,
                 "title": (d.get("title") or ""),
                 "text": (d.get("text") or ""),
-                "wiki_id": (d.get("wiki_id") or ""),
+                # "wiki_id": (d.get("wiki_id") or ""),
                 "source": (d.get("source") or ""),
                 "url": d.get("url", None),
             }

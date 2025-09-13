@@ -43,7 +43,7 @@ services:
       - ./data/postgres_data:/var/lib/postgresql/data
 
   streamlit:
-    env_file: ._env
+    env_file: .env
     build:
       context: .              # repo root
       dockerfile: Dockerfile
@@ -53,11 +53,13 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - MCP_SERVER_URL=http://mcp-server:8765
       - SKIP_WARMUP=${SKIP_WARMUP}
+      - ES_URL=http://elasticsearch:9200
+      - QDRANT_URL=http://qdrant:6333
 
     #command: streamlit run ./app/main.py --server.port=8501 --server.address=0.0.0.0
     depends_on:
-      mcp-server:
-        condition: service_healthy
+      #mcp-server:
+      #  condition: service_healthy
       elasticsearch:
         condition: service_healthy
       qdrant:
@@ -111,3 +113,8 @@ volumes:
 #      timeout: 5s
 #      retries: 3
 #      start_period: 10s
+
+
+
+# docker compose up -d                                                       ─╯
+#docker compose logs -f streamlit

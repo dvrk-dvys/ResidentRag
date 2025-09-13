@@ -13,7 +13,7 @@ w.set_lang("en")
 import numpy as np
 import wikipediaapi
 from Bio import Entrez
-from tool_utils import chunk_text
+from tools.tool_utils import chunk_text
 
 ENTREZ_EMAIL = os.getenv("ENTREZ_EMAIL")
 # MAX_CHUNK_TOKENS = os.getenv('MAX_CHUNK_TOKENS')

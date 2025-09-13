@@ -1,23 +1,25 @@
 import json
 import os
-from dataclasses import dataclass
+
+from dotenv import load_dotenv
+
+load_dotenv()
+
 from typing import Dict, Iterable, List, Optional
 
 from elasticsearch import Elasticsearch
 from evaluation.eval_utils import evaluate
-from qdrant_client import QdrantClient
-from search.es_search import wait_for_es
-from search.qdrant_search import get_client, get_model
+from search.es_search import get_es_client
+from search.qdrant_search import get_model, get_qdrant_client
+from search.search_utils import Hit
 from sentence_transformers import SentenceTransformer
 
 # https://www.elastic.co/docs/reference/query-languages/query-dsl/query-dsl-bool-query
 
 # ElasticSearch Config
 ES_URL = os.getenv("ES_URL", "http://elasticsearch:9200")
-# ES_URL = os.getenv("ES_URL", "http://localhost:9200")
 ES_INDEX = os.getenv("ES_INDEX", "medical_docs")
-ES_CLIENT = Elasticsearch(ES_URL, request_timeout=30)
-# wait_for_es(ES_CLIENT, timeout=120)
+
 
 # Qdrant Config
 QDRANT_URL = os.getenv("QDRANT_URL", "http://localhost:6333")
@@ -25,47 +27,22 @@ QDRANT_COLLECTION = os.getenv("QDRANT_COLLECTION", "medical_rag_sparse")
 MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
 
 
-# QDRANT_CLIENT = QdrantClient(QDRANT_URL, timeout=30, prefer_grpc=False)
-# EMBED_MODEL = SentenceTransformer(MODEL_NAME)
-
 #!NOTE: NO NEED FOR ES kNN would be a second semantic signal using the same embedding model. Is redundant w Qdrant
 
-QDRANT_CLIENT = get_client()
-EMBED_MODEL = get_model()
+# Remove module-level client instantiation - use lazy loading instead
 
 
-@dataclass
-class Hit:
-    #'Hit' as in the hybrid search has found some options
-    id: str
-    title: str
-    text: str
-
-    # ?ADD  OTHER SCORES HERE TOO?
-    # bm25_score: float = 0.0
-    # dense_score: float = 0.0
-    # reranker_score: float = 0.0
-    rrf_score: float = 0.0
-
-    source_type: Optional[str] = None
-
-
-def ensure_es_ready(timeout: int = 60) -> None:
-    wait_for_es(ES_CLIENT, timeout=timeout)
-
-
-def get_qdrant_ids(query, limit=50):
+def get_qdrant_ids(query, limit=50, local=False):
     # Get top results up to the limit. We usually take more than you plan to display (e.g., 50)
     # so RRF has latitude to promote items that appear high in either list.
 
-    # vec = EMBED_MODEL.encode([query], normalize_embeddings=True)[0].tolist()
-    # points = QDRANT_CLIENT.search(collection_name=QDRANT_COLLECTION, query_vector=vec, limit=limit)
+    qdrant_client = get_qdrant_client(local=local)
+    embed_model = get_model()
 
-    #!!! speed up
-    vec = EMBED_MODEL.encode(
+    vec = embed_model.encode(
         [query], normalize_embeddings=True, batch_size=32, convert_to_numpy=True
     )[0]
-    points = QDRANT_CLIENT.query_points(
+    points = qdrant_client.query_points(
         collection_name=QDRANT_COLLECTION,
         query=vec.tolist(),
         limit=limit,
@@ -82,11 +59,7 @@ def get_qdrant_ids(query, limit=50):
     return doc_ids
 
 
-def medical_query_conditional_boost(
-    q: str,
-    size: int = 50,
-    source_filter: Optional[str] = None,
-) -> Dict:
+def medical_query_conditional_boost(q, size=50, source_filter=None):
     """
         #On pubmed data we boost the title, on all other data types we boost the text
     PubMed branch: boost title
@@ -133,22 +106,22 @@ def medical_query_conditional_boost(
     return {"query": {"bool": bool_query}, "size": size, "_source": ["id"]}
 
 
-def get_es_ids(
-    query: str, size: int = 50, source_type: Optional[str] = None
-) -> List[str]:
+def get_es_ids(query, size=50, source_type=None, local=False):
     # Get top results up to the size (same as limit in qdrant). We usually take more than you plan to display (e.g., 50)
     # so RRF has latitude to promote items that appear high in either list.
     body = medical_query_conditional_boost(query, size=size, source_filter=source_type)
-    res = ES_CLIENT.search(index=ES_INDEX, body=body)
+    es_client = get_es_client(local=local)
+    res = es_client.search(index=ES_INDEX, body=body)
     return [(h["_source"].get("id") or h["_id"]) for h in res["hits"]["hits"]]
 
 
-def es_get_docs(ids):
+def es_get_docs(ids, local=False):
     # Hydarates all results (both Elastic Search & Qdrant IdS) using elasticsearch,
     # returns a hit object with the actual contents of the search for print out and readability
     if not ids:
         return []
-    res = ES_CLIENT.mget(index=ES_INDEX, body={"ids": ids})["docs"]
+    es_client = get_es_client(local=local)
+    res = es_client.mget(index=ES_INDEX, body={"ids": ids})["docs"]
     out = []
     for d in res:
         if not d.get("found"):
@@ -189,16 +162,15 @@ def weighted_rrf_fuse(lists, weights=None, k=60, top_k=10):
     return fused  # list of (doc_id, rrf_score)
 
 
-def hybrid_search(query: str, top_k: int = 10) -> list[Hit]:
-    ensure_es_ready(timeout=30)
-    q_ids = get_qdrant_ids(query, limit=50)
-    e_ids = get_es_ids(query, size=50)
+def hybrid_search(query, top_k=10, local=False):
+    q_ids = get_qdrant_ids(query, limit=50, local=local)
+    e_ids = get_es_ids(query, size=50, local=local)
 
     fused = weighted_rrf_fuse([q_ids, e_ids], weights=[2.0, 1.0], k=60, top_k=top_k)
     weighted_hybrid_ids = [doc_id for doc_id, _ in fused]
     score_map = dict(fused)
 
-    docs = es_get_docs(weighted_hybrid_ids)
+    docs = es_get_docs(weighted_hybrid_ids, local=local)
 
     for d in docs:
         d.rrf_score = score_map.get(d.id, 0.0)
@@ -213,13 +185,16 @@ def hybrid_search(query: str, top_k: int = 10) -> list[Hit]:
 
 if __name__ == "__main__":
 
-    ground_truth_path = "//data/evaluation/ground_truth.json"
+    ground_truth_path = (
+        "/Users/jordanharris/Code/ResidentRAG/data/evaluation/ground_truth.json"
+    )
     with open(ground_truth_path, "r", encoding="utf-8") as f:
         gt_raw = json.load(f)
     gt = [{"query": row["question"], "doc_id": row["doc_id"]} for row in gt_raw]
 
     top_k = 5
-    metrics = evaluate(gt, hybrid_search, top_k=top_k)
+
+    metrics = evaluate(gt, hybrid_search, top_k=top_k, local=True)
 
     hit = metrics[f"Hit@{top_k}"]
     mrr = metrics[f"MRR@{top_k}"]
@@ -244,7 +219,9 @@ if __name__ == "__main__":
         print(f"\n📋 Query: {query}")
         try:
 
-            results = hybrid_search(query, top_k=top_k)  # (doc_id, rrf_score)
+            results = hybrid_search(
+                query, top_k=top_k, local=True
+            )  # (doc_id, rrf_score)
             print(f"✅ Found {len(results)} results:")
 
             if not results:

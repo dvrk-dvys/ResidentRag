@@ -1,31 +1,30 @@
 import json
 import os
-from dataclasses import dataclass
-from typing import Dict, Iterable, List, Optional
+
+from dotenv import load_dotenv
+
+load_dotenv()  # Load environment variables from .env file
 
 from elasticsearch import Elasticsearch
-
-# from app.evaluation.eval_utils import evaluate
 from evaluation.eval_utils import evaluate
+from search.search_utils import Hit
 
+# For Docker containers, use ES_URL (elasticsearch:9200)
+# For host machine, use ES_LOCAL_URL (localhost:9200)
 ES_URL = os.getenv("ES_URL", "http://elasticsearch:9200")
-# ES_URL = os.getenv("ES_URL", "http://localhost:9200")
 INDEX = os.getenv("ES_INDEX", "medical_docs")
 
 
-@dataclass
-class Hit:
-    #'Hit' as in the hybrid search has found some options
-    id: str
-    title: str
-    text: str
-    rrf_score: float = 0.0
-    source_type: Optional[str] = None
-
-    # ?ADD  OTHER SCORES HERE TOO?
+def get_es_client(local=False):
+    """Get ES client with correct URL based on environment"""
+    if local:
+        url = os.getenv("ES_LOCAL_URL", "http://localhost:9200")
+    else:
+        url = os.getenv("ES_URL", "http://elasticsearch:9200")
+    return Elasticsearch(url, request_timeout=30)
 
 
-def wait_for_es(es, timeout: int = 60) -> None:
+def wait_for_es(es, timeout=60):
     import os
     import time
 
@@ -56,7 +55,7 @@ def search_elasticsearch(query, top_k=5, source_type=None):
     """
     Simple BM25 search using Elasticsearch for medical data
     """
-    ES_CLIENT = Elasticsearch(ES_URL, request_timeout=30)
+    ES_CLIENT = get_es_client(local=bool(os.getenv("ES_LOCAL_URL")))
 
     search_query = {
         "size": top_k,
@@ -105,8 +104,15 @@ def search_elasticsearch(query, top_k=5, source_type=None):
 
 
 if __name__ == "__main__":
+    # docker compose up -d elasticsearch qdrant
 
-    ground_truth_path = "//data/evaluation/ground_truth.json"
+    # When running from host, use localhost URL
+    ES_URL = os.getenv("ES_LOCAL_URL", "http://localhost:9200")
+    INDEX = os.getenv("ES_INDEX", "medical_docs")
+
+    ground_truth_path = (
+        "/Users/jordanharris/Code/ResidentRAG/data/evaluation/ground_truth.json"
+    )
     with open(ground_truth_path, "r", encoding="utf-8") as f:
         gt_raw = json.load(f)
     gt = [{"query": row["question"], "doc_id": row["doc_id"]} for row in gt_raw]
