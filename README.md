@@ -80,7 +80,7 @@ docker compose logs -f streamlit
 
 The ResidentRAG interface provides an intuitive chat experience with user type selection, response detail preferences, and integrated feedback collection.
 
-![ResidentRAG Interface](path/to/image1.png)
+![ResidentRAG Interface](/app/images/read_me/medirag_app.png)
 
 **Key Features:**
 - **User Type Selection**: Choose between Patient, Healthcare Provider, or Medical Researcher
@@ -140,7 +140,7 @@ python scripts/load_to_qdrant.py
 * See **citations** under the answer
 * Give 👍/👎 **feedback** (stored in PostgreSQL)
 
-![User Feedback Collection](path/to/image2.png)
+![User Feedback Collection](/app/images/read_me/user_review_pic.png)
 
 *Feedback is automatically saved to PostgreSQL for analytics and quality monitoring.*
 
@@ -205,7 +205,7 @@ Monitor the agent's decision-making process and search operations in real-time:
 docker compose logs -f streamlit
 ```
 
-![System Logs](path/to/image3.png)
+![System Logs](/app/images/read_me/streamlit_logs.png)
 
 *Shows hybrid search results, tool selection logic, and feedback storage operations.*
 
