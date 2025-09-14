@@ -7,8 +7,8 @@
 *.wav
 *.zip
 *.flac
-*.txt
-*.png
+#*.txt
+#*.png
 *.csv
 *.parquet
 **/kubectl

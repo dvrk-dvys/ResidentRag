@@ -1,0 +1,36 @@
+# Core
+openai>=1.0
+wikipedia==1.4.0
+Wikipedia-API==0.8.1
+biopython==1.85
+elasticsearch==8.19.0
+qdrant-client==1.15.1
+tiktoken==0.11.0
+langchain==0.3.10
+langchain-text-splitters==0.3.2
+
+# Embeddings / rerank
+sentence-transformers==3.0.1
+
+# Sci stack (pins that work across macOS ARM & manylinux)
+numpy==1.26.4
+scipy==1.11.4
+scikit-learn==1.3.2
+
+# Web/UI
+streamlit==1.49.1
+streamlit-chat
+streamlit-option-menu
+prometheus-client==0.22.1
+plotly
+
+# Optional: plotting, pandas
+pandas==2.3.2
+matplotlib==3.10.0
+Markdown>=3.5
+
+# Additional packages
+python-dotenv
+tqdm
+fastmcp
+psycopg2-binary
