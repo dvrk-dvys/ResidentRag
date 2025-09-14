@@ -1,0 +1,17 @@
+apiVersion: 1
+
+datasources:
+  - name: residentRAG-datasource
+    type: postgres
+    access: proxy
+    url: postgres:5432
+    database: ragdb
+    user: raguser
+    secureJsonData:
+      password: ragpass
+    jsonData:
+      sslmode: disable
+      maxOpenConns: 100
+      maxIdleConns: 100
+      connMaxLifetime: 14400
+    isDefault: true

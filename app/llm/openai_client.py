@@ -3,6 +3,7 @@ import os
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
+from llm.query_rewriter import rewrite_query_with_context
 from llm.rag_utils import build_rag_context, build_rag_prompt
 from openai import OpenAI
 from tools.registry import FUNCTION_MAP, TOOLS_JSON
@@ -118,6 +119,7 @@ def agentic_llm(
     max_iterations=3,
     local=False,
     tools_per_iter=2,
+    chat_history=None,
 ) -> LLMResponse:
     """
     Call OpenAI LLM with the prompt using an iterative agent loop.
@@ -146,7 +148,7 @@ def agentic_llm(
     client = get_openai_client()
 
     # Build context based on user type and detail level
-    sys_prompt = build_rag_context(settings)
+    sys_prompt = build_rag_context(settings, chat_history)
 
     # Build RAG prompt
     search_results = []
@@ -161,15 +163,21 @@ def agentic_llm(
             if i == 2:
                 print()
 
-            prompt, search_results = build_rag_prompt(
-                question=query,
-                settings=settings,
-                search_results=search_results,
-                search_queries=search_queries,
-                previous_actions=previous_actions,
-                max_iter=max_iterations,
-                curr_iter=i,
-            )
+            # Use rewritten query if available, otherwise use original
+            # current_query = re_query if re_query else query
+            try:
+                prompt, search_results = build_rag_prompt(
+                    question=query,  # re_query,
+                    settings=settings,
+                    search_results=search_results,
+                    search_queries=search_queries,
+                    previous_actions=previous_actions,
+                    max_iter=max_iterations,
+                    curr_iter=i,
+                )
+            except Exception as e:
+                print(f"Error building RAG prompt : {e}")
+                raise
 
             messages = []
             if sys_prompt:
@@ -191,6 +199,7 @@ def agentic_llm(
             )
             m1 = r1.choices[0].message
             tool_calls = getattr(m1, "tool_calls", None) or []
+
             tool_calls = tool_calls[
                 :tools_per_iter
             ]  #!! WHY DOES IT KEEP SELECTING BOTH PZBMED AND WIKIPEDIA TOOL ON THE SECOND ITER?
@@ -200,7 +209,7 @@ def agentic_llm(
             if i == max_iterations - 1 or not tool_calls:
                 usage = getattr(r1, "usage", None)
                 final_response = LLMResponse(
-                    text=m1.content,
+                    text=m1.content or "",
                     model=model,
                     prompt_tokens=getattr(usage, "prompt_tokens", 0) if usage else 0,
                     completion_tokens=(
@@ -212,7 +221,7 @@ def agentic_llm(
 
                 citations = (
                     []
-                    if not used_tools
+                    if not used_tools or not search_results
                     else [format_citation(d) for d in search_results]
                 )
                 return final_response, citations
@@ -221,7 +230,7 @@ def agentic_llm(
             tool_messages = []
             for call in tool_calls:
                 name = call.function.name
-                args = json.loads(call.function.arguments or "{}")
+                args = json.loads(call.function.arguments)
 
                 # Add local parameter for functions that support it
                 if name in function_map:
@@ -232,7 +241,13 @@ def agentic_llm(
                     if "local" in sig.parameters:
                         args["local"] = local
 
-                result = function_map[name](**args)
+                print(f"DEBUG: About to call tool {name} with args: {args}")
+                try:
+                    result = function_map[name](**args)
+                    print(f"DEBUG: Tool {name} returned result type: {type(result)}")
+                except Exception as tool_error:
+                    print(f"DEBUG: Tool {name} failed with error: {tool_error}")
+                    raise  # Re-raise to trigger outer exception handler
 
                 tool_messages.append(
                     {
@@ -267,74 +282,70 @@ def agentic_llm(
             print("previous_actions: ", previous_actions)
 
     except Exception as e:
-        return LLMResponse(
-            text=f"Error calling LLM: {e}",
-            model=model,
-            prompt_tokens=0,
-            completion_tokens=0,
-            total_tokens=0,
-            used_tools=None,
-        )
+        return (
+            LLMResponse(
+                text=f"Error calling LLM: {e}",
+                model=model,
+                prompt_tokens=0,
+                completion_tokens=0,
+                total_tokens=0,
+                used_tools=None,
+            ),
+            [],
+        )  # for emtoy citations
 
 
 if __name__ == "__main__":
-    # os.environ["ES_URL"] = "http://localhost:9200"
-    # os.environ["QDRANT_URL"] = "http://localhost:6333"
-
-    # from elasticsearch import Elasticsearch
-    # from qdrant_client import QdrantClient
-    # from search.es_search import wait_for_es
-
-    # print("ES_URL:", os.getenv("ES_URL"))
-    # print("QDRANT_URL:", os.getenv("QDRANT_URL"))
-
     print("🤖 OpenAI Client Test")
     print("=" * 50)
 
     def in_docker():
         return os.path.exists("/.dockerenv") or os.getenv("DOCKER_CONTAINER") == "1"
 
-    # ES_URL = os.getenv("ES_URL") or ("http://elasticsearch:9200" if in_docker() else "http://localhost:9200")
-    # ES_CLIENT = Elasticsearch(ES_URL, request_timeout=30)
-    # wait_for_es(ES_CLIENT, timeout=30)
-
-    # QDRANT_URL = os.getenv("QDRANT_URL") or ("http://qdrant:6333" if in_docker() else "http://localhost:6333")
-    # QDRANT = QdrantClient(url=QDRANT_URL, timeout=30.0)
-
-    # Settings like your UI
+    # streamlit app settings
     settings = {
         "user_type": "Healthcare Provider",  # "Healthcare Provider" | "Medical Researcher" | "Patient"
         "response_detail": "Detailed",  # "Simple" | "Detailed" | "Technical"
         "show_sources": True,
     }
 
-    test_query = "What are the connections between prolonged corticosteroid use and femoral avascular necrosis?"
+    test_query = [
+        "Hello Howre you?",
+        "What are the connections between prolonged corticosteroid use and femoral avascular necrosis?",
+        "What are the symptoms of a heart attack?",
+        "What is avascular necrosis?",
+    ]
 
-    # Run the agent loop (max_iterations defaults to 3 inside agentic_llm)
-    result, out_citations = agentic_llm(
-        query=test_query,
-        settings=settings,
-        model=DEFAULT_MODEL,
-        temperature=0.1,
-        max_tokens=500,
-        local=True,
-    )
+    for t in test_query:
+        print(t)
+        print("=" * 50)
 
-    print("— Response —")
-    print(result.text)
-    print("citations: ", out_citations)
+        # Run the agent loop (max_iterations defaults to 3 inside agentic_llm)
+        result, out_citations = agentic_llm(
+            query=t,
+            settings=settings,
+            model=DEFAULT_MODEL,
+            temperature=0.1,
+            max_tokens=500,
+            local=True,
+        )
 
-    print("\n— Usage —")
-    print(f"Model: {result.model}")
-    print(
-        f"Prompt tokens: {result.prompt_tokens} | "
-        f"Completion tokens: {result.completion_tokens} | "
-        f"Total: {result.total_tokens}"
-    )
+        print("— Response —")
+        print(result.text)
+        print("citations: ", out_citations)
 
-    if result.used_tools:
-        print("\n— Tools used —")
-        for name, _payload in result.used_tools:
-            print(f"- {name}")
-    else:
-        print("\n— Tools used — none")
+        print("\n— Usage —")
+        print(f"Model: {result.model}")
+        print(
+            f"Prompt tokens: {result.prompt_tokens} | "
+            f"Completion tokens: {result.completion_tokens} | "
+            f"Total: {result.total_tokens}"
+        )
+
+        if result.used_tools:
+            print("\n— Tools used —")
+            for name, _payload in result.used_tools:
+                print(f"- {name}")
+        else:
+            print("\n— Tools used — none")
+        print("=" * 50)

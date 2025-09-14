@@ -87,27 +87,91 @@ def recreate_collection(client: QdrantClient):
     )
 
 
-def upsert_all(client: QdrantClient, batch_size: int = 512):
-    # Send the points to the collection
-    print("🚀 Embedding + upserting to Qdrant...", flush=True)
+def point_uuid(s: str) -> str:
+    # include source in the string so textbook/pubmed don't collide
+    return str(uuid.uuid5(uuid.NAMESPACE_URL, f"{COLLECTION_NAME}:{s}"))
 
-    batch, upserted = [], 0
 
-    for payload in tqdm(iter_docs(), desc="Processing docs"):
-        vec = embed_title_plus_text(payload["title"], payload["text"])
-        batch.append(PointStruct(id=uuid.uuid4().hex, vector=vec, payload=payload))
-        upserted += 1
+# 2) your existing flush helper (simple + batched skip)
+def flush_batch(client, buf, collection_name):
+    if not buf:
+        return 0, 0
 
-        if len(batch) >= batch_size:
-            client.upsert(collection_name=COLLECTION_NAME, points=batch)
-            print(f"   • Upserted so far: {upserted}", flush=True)
-            batch.clear()
+    # use stable UUIDs for IDs
+    ids = [point_uuid(p["id"]) for p in buf]
 
-    if batch:
-        client.upsert(collection_name=COLLECTION_NAME, points=batch)
-        print(f"   • Final upsert flush. Total: {upserted}", flush=True)
+    existing = {
+        str(pt.id)
+        for pt in client.retrieve(
+            collection_name=collection_name,
+            ids=ids,
+            with_payload=False,
+            with_vectors=False,
+        )
+    }
+    # compare as strings; pt.id may already be a UUID object
+    todo_payloads = [p for p, pid in zip(buf, ids) if pid not in existing]
+    skipped = len(buf) - len(todo_payloads)
 
-    print(f"✅ Upserted {upserted} points.\n", flush=True)
+    if not todo_payloads:
+        return 0, skipped
+
+    texts = [
+        ((p["title"] or "") + ("\n\n" + p["text"] if p["text"] else "")).strip()
+        for p in todo_payloads
+    ]
+    vecs = model.encode(
+        texts, normalize_embeddings=True, batch_size=64, show_progress_bar=False
+    )
+
+    points = [
+        PointStruct(
+            id=point_uuid(p["id"]),  # <-- UUID id
+            vector=(v.tolist() if isinstance(v, np.ndarray) else v),
+            payload=p,  # keep original string id in payload["id"]
+        )
+        for p, v in zip(todo_payloads, vecs)
+    ]
+    client.upsert(collection_name=collection_name, points=points)
+    return len(points), skipped
+
+
+def upsert_all(client=QdrantClient, batch_size=512):
+    print("🚀 Embedding + upserting to Qdrant (skip existing)…", flush=True)
+
+    total_docs = sum(len(load_json_array(p)) for p, _ in SOURCES)
+    buffer, upserted, skipped, processed = [], 0, 0, 0
+    pbar = tqdm(total=total_docs, desc="Qdrant upsert", unit="doc", dynamic_ncols=True)
+
+    try:
+        for payload in iter_docs():
+            buffer.append(payload)
+            if len(buffer) >= batch_size:
+                u, s = flush_batch(client, buffer, COLLECTION_NAME)
+                upserted += u
+                skipped += s
+                processed += len(buffer)
+                pbar.update(len(buffer))
+                print(
+                    f"   • processed={processed} | upserted={upserted} | skipped={skipped}",
+                    flush=True,
+                )
+                buffer.clear()
+    except KeyboardInterrupt:
+        print("\n⏹️ Cancelled by user.")
+    finally:
+        # flush remaining (if any) so you don't lose the last partial batch
+        if buffer:
+            u, s = flush_batch(client, buffer, COLLECTION_NAME)
+            upserted += u
+            skipped += s
+            processed += len(buffer)
+            pbar.update(len(buffer))
+        pbar.close()
+        print(
+            f"✅ Qdrant done. processed={processed}, upserted={upserted}, skipped(existing)={skipped}",
+            flush=True,
+        )
 
 
 if __name__ == "__main__":
@@ -122,13 +186,21 @@ if __name__ == "__main__":
     SOURCES = [
         # ("/Users/jordanharris/Code/wiki_rag/data/small_seed/medical_wiki_seed_small.json",     "wikipedia"),
         (
-            "/Users/jordanharris/Code/wiki_rag/data/small_seed/medical_textbook_seed_small.json",
+            "/Users/jordanharris/Code/ResidentRAG/data/small_seed/medical_textbook_seed_small.json",
             "textbook",
         ),
         (
-            "/Users/jordanharris/Code/wiki_rag/data/small_seed/medical_pubmed_seed_small.json",
+            "/Users/jordanharris/Code/ResidentRAG/data/small_seed/medical_pubmed_seed_small.json",
             "pubmed",
         ),
+        # (
+        #    "/Users/jordanharris/Code/ResidentRAG/data/medium_seed/medical_textbook_seed_medium.json",
+        #    "textbook",
+        # ),
+        # (
+        #    "/Users/jordanharris/Code/ResidentRAG/data/medium_seed/medical_pubmed_seed_medium.json",
+        #    "pubmed",
+        # ),
     ]
 
     PREFIX_IDS = False
@@ -138,5 +210,14 @@ if __name__ == "__main__":
 
     qc = QdrantClient(url=QDRANT_URL)
     recreate_collection(qc)
-    upsert_all(qc)
+    try:
+        upsert_all(qc)
+    except KeyboardInterrupt:
+        print("\n⏹️ Cancelled by user.")
+        try:
+            cnt = qc.count(COLLECTION_NAME, exact=True).count
+            print(f"Qdrant count in '{COLLECTION_NAME}': {cnt}")
+        except Exception as e:
+            print(f"(Could not fetch Qdrant count: {e})")
+
     print(f"⏱️ Done in {time.time() - t_start:.1f}s", flush=True)

@@ -1,8 +1,10 @@
+import time
 import uuid
 from typing import Dict, List
 
 import plotly.express as px
 import streamlit as st
+from monitoring.feedback import generate_message_id, store_feedback
 from streamlit_chat import message
 from streamlit_option_menu import option_menu
 
@@ -65,19 +67,19 @@ class MedicalRAG_UI:
             "show_sources": show_sources,
         }
 
-    def render_chat_interface(self, settings: dict):
+    def render_chat_interface(self, settings):
         st.title("🏥 Medical RAG Assistant")
         st.caption("Ask medical questions with confident sources")
 
         # Display chat history
         for msg in st.session_state.chat_messages:
-            self.render_message(msg)
+            self.render_message(msg, settings)
 
         # Promp User input
         if prompt := st.chat_input("Ask a medical question..."):
             self.handle_user_input(prompt, settings)
 
-    def render_message(self, message: Dict):
+    def render_message(self, message, settings):
         role = message["role"]
         content = message["content"]
 
@@ -89,25 +91,51 @@ class MedicalRAG_UI:
             with st.chat_message("assistant"):
                 st.markdown(content)
 
-                # Show sources if available
-                sources = message.get("sources")
+                # Show citations if available
+                citations = message.get("citations")
 
-                if sources:  # truthy -> non-empty list
-                    with st.expander("📚 Sources"):
-                        for s in sources:
-                            if isinstance(s, dict):
-                                st.write(
-                                    f"• {s.get('title', '(untitled)')} — score: {s.get('score', 0):.4f}"
-                                )
+                # Only show if the user enabled it AND there are citations
+                if settings.get("show_sources") and citations:
+                    # normalize to list
+                    if not isinstance(citations, list):
+                        citations = [citations]
+
+                    with st.expander(
+                        f"📚 Citations ({len(citations)})", expanded=False
+                    ):
+                        for c in citations:
+                            if isinstance(c, dict):
+                                st.json(c)  # nicer for dicts
                             else:
-                                st.write(f"• {s}")
+                                st.write(c)  # fall back to plain text
+
+                # Add feedback buttons only for messages that used tools
+                message_id = message.get("id")
+                used_tools = message.get("used_tools", False)
+                if message_id and not message.get("feedback_given") and used_tools:
+                    col1, col2, col3, col4 = st.columns([3, 1, 1, 5])
+
+                    with col1:
+                        st.markdown("🤔 Was this response helpful?")
+
+                    with col2:
+                        if st.button("👍", key=f"up_{message_id}"):
+                            self.save_feedback(message, 1, settings)
+                            message["feedback_given"] = True
+                            st.rerun()
+
+                    with col3:
+                        if st.button("👎", key=f"down_{message_id}"):
+                            self.save_feedback(message, -1, settings)
+                            message["feedback_given"] = True
+                            st.rerun()
 
         elif role == "tool_call":
             with st.chat_message("assistant"):
                 with st.expander(f"🔧 {message['tool_name']}"):
                     st.json(message["output"])
 
-    def handle_user_input(self, prompt: str, settings: dict):
+    def handle_user_input(self, prompt, settings):
         # Add user message to chat history above
         user_msg = {"role": "user", "content": prompt}
         st.session_state.chat_messages.append(user_msg)
@@ -123,17 +151,48 @@ class MedicalRAG_UI:
                 question=prompt, settings=settings
             )
 
-        # Add assistant response
+        # Add assistant response with unique ID for feedback
         assistant_msg = {
             "role": "assistant",
             "content": response["answer"],
+            "id": generate_message_id(),
+            "user_query": prompt,
+            "feedback_given": False,
+            "used_tools": len(response.get("used_tools", []))
+            > 0,  # Track if tools were used
         }
-        if response["sources"] != []:
-            assistant_msg["sources"] = response["sources"]
+        cits = response.get("citations") or []
+        if isinstance(cits, (list, tuple)) and cits:
+            assistant_msg["citations"] = list(cits)
 
         st.session_state.chat_messages.append(assistant_msg)
 
         st.rerun()
+
+    def save_feedback(self, message, feedback_value, settings):
+        """Save user feedback to PostgreSQL"""
+        try:
+            success = store_feedback(
+                conversation_id=st.session_state.conversation_id,
+                message_id=message["id"],
+                user_query=message.get("user_query", ""),
+                assistant_response=message["content"],
+                feedback=feedback_value,
+                user_type=settings.get("user_type"),
+                response_detail=settings.get("response_detail"),
+                tool_used="unknown",  # Could be enhanced to track tool usage
+                session_id=st.session_state.get("session_id", "unknown"),
+            )
+
+            if success:
+                feedback_type = "👍" if feedback_value == 1 else "👎"
+                st.success(f"Thanks for your feedback! {feedback_type}")
+                time.sleep(10)
+            else:
+                st.error("Failed to save feedback. Please try again.")
+
+        except Exception as e:
+            st.error(f"Error saving feedback: {e}")
 
     def reset_conversation(self):
         st.session_state.chat_messages = []

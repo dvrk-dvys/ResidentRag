@@ -20,7 +20,8 @@ services:
       test: ["CMD-SHELL", "curl -fsSL http://localhost:9200/_cluster/health | grep -Eq '\"status\":\"(green|yellow)\"'"]
       interval: 10s
       timeout: 5s
-      retries: 8
+      retries: 30
+      start_period: 90s #nEEDS LIKE 2 MINS TO START UP ES
 
   qdrant:
     image: qdrant/qdrant
@@ -37,25 +38,28 @@ services:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-    #ports:
-    #  - "${POSTGRES_PORT:-5432}:5432"
+    ports:
+      - "${POSTGRES_PORT:-5433}:5432"
     volumes:
       - ./data/postgres_data:/var/lib/postgresql/data
 
   streamlit:
-    env_file: .env
     build:
-      context: .              # repo root
+      context: . #REPO ROOT
       dockerfile: Dockerfile
+    env_file: .env
+    environment:
+      DOCKER_CONTAINER: "1"
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      SKIP_WARMUP: ${SKIP_WARMUP:-false}
+      ES_URL: http://elasticsearch:9200
+      QDRANT_URL: http://qdrant:6333
+      #MCP_SERVER_URL: http://mcp-server:8765
+    volumes:
+      - ./app:/app/app         # hot-reload code
+      - ./data:/app/data       # (optional) local datasets
     ports:
       - "8501:8501"
-    environment:
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - MCP_SERVER_URL=http://mcp-server:8765
-      - SKIP_WARMUP=${SKIP_WARMUP}
-      - ES_URL=http://elasticsearch:9200
-      - QDRANT_URL=http://qdrant:6333
-
     #command: streamlit run ./app/main.py --server.port=8501 --server.address=0.0.0.0
     depends_on:
       #mcp-server:
@@ -71,6 +75,8 @@ services:
       - "3010:3000"
     volumes:
       - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+      - ./grafana/dashboards:/etc/grafana/provisioning/dashboards
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
       - GF_AUTH_DISABLE_LOGIN_FORM=false
@@ -115,6 +121,51 @@ volumes:
 #      start_period: 10s
 
 
+#Elastic Search Health checklist
 
-# docker compose up -d                                                       ─╯
-#docker compose logs -f streamlit
+# 1) cluster health
+#curl -s 'http://localhost:9200/_cluster/health?pretty'
+
+# 2) indices
+#curl -s 'http://localhost:9200/_cat/indices?v'
+
+# 3) specific index check
+#ES_INDEX=${ES_INDEX:-medical_docs}
+#curl -s -o /dev/null -w '%{http_code}\n' "http://localhost:9200/${ES_INDEX}"
+#curl -s "http://localhost:9200/${ES_INDEX}/_count?pretty"
+
+# =========================================
+# 🔄 Development Workflow (with volume mounts)
+# =========================================
+# 1. Changed Python code in /app? → Just restart
+# docker compose restart streamlit
+
+# 2. Added new pip packages? → Rebuild
+# docker compose down && docker compose up --build -d
+
+# 3. Changed Dockerfile/docker-compose.yml? → Rebuild
+# docker compose down && docker compose up --build -d
+
+# 4. Something weird/cached? → Nuclear option
+# docker compose down --remove-orphans
+# docker compose up --build --force-recreate -d
+
+# =========================================
+# 🧹 Nuke stale Docker bits (use sparingly)
+# =========================================
+# Stop/remove containers, networks, orphans (keeps volumes)
+# docker compose down --remove-orphans
+# Remove ALL unused images/volumes/cache (global)
+# docker system prune -a --volumes
+
+# =========================================
+# 🔍 Sanity: what code is the container running?
+# =========================================
+# Show resolved compose (catches bad keys / confirms build context)
+# docker compose config --quiet
+# Exec into streamlit container and print module file paths
+# docker compose exec streamlit python - <<'PY'
+# import importlib;
+# print("rag_utils:", importlib.import_module('app.llm.rag_utils').__file__)
+# print("openai_client:", importlib.import_module('app.llm.openai_client').__file__)
+# PY

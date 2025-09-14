@@ -2,6 +2,7 @@ from typing import Dict
 
 import markdown
 from llm.openai_client import agentic_llm, llm
+from llm.query_rewriter import rewrite_query_with_context
 
 
 class ChatAssistant:
@@ -12,10 +13,17 @@ class ChatAssistant:
         self.chat_messages = [{"role": "developer", "content": self.developer_prompt}]
 
     def query_llm(self, query, settings):
+        # Rewrite query for better search results
+        re_query = rewrite_query_with_context(query, self.chat_messages)
+        print(f"DEBUG: Original query: {query}")
+        print(f"DEBUG: Rewritten query: {re_query}")
+
         result, out_citations = agentic_llm(
-            query=query,
+            query=re_query,
             settings=settings,
+            chat_history=self.chat_messages,
         )
+        return result, out_citations
 
     def process_message(self, question, settings):
         if question.strip().lower() == "stop":
@@ -28,11 +36,17 @@ class ChatAssistant:
 
         response, out_citations = self.query_llm(query=question, settings=settings)
 
+        # Store assistant response in chat history
+        self.chat_messages.append(
+            {"role": "assistant", "content": response.text, "citations": out_citations}
+        )
+
         resp = {
             "answer": response.text,
             "model": response.model,
             "tokens": response.total_tokens,
             "citations": out_citations,
+            "used_tools": response.used_tools or [],
         }
         return resp
 

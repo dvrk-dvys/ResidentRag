@@ -27,6 +27,8 @@ TASK:
 - The CONTEXT is built using wikipedia PubMed research papers and textbook documents/shards in your corpus as your source of information.
 - At the beginning of the conversation the CONTEXT is empty.
 - When you experience a lack of information or require a citation, feel free to utilize the TOOLS available to you to answer the question.
+- IMPORTANT: Use the CONVERSATION_HISTORY below to understand context from previous questions and maintain conversational continuity. When users ask about "previous questions" or "what we discussed", refer to the conversation history.
+- When your current query seems to lack information or context, consult the CONVERSATION_HISTORY for additional context that may help you provide a more relevant and complete answer.
 - If you cannot answer the question using CONTEXT, TOOL, or your own knowledge, tell the user this and prompt for more information or ask if there are any other question that you can help with.
 
 
@@ -39,6 +41,10 @@ SYSTEM CONTEXT:
 {user_context}
 </USER_CONTEXT>
 
+<CONVERSATION_HISTORY>
+{conversation_history}
+</CONVERSATION_HISTORY>
+
 - The citations and url links may only come from the knowledge base corpus or TOOLS output.
 
 <RESPONSE_DETAIL_CONTEXT>
@@ -46,7 +52,6 @@ SYSTEM CONTEXT:
 </RESPONSE_DETAIL_CONTEXT>
 
 """.strip()
-# ????? {conversation_history}
 
 
 # === System prompt (tool-aware, compact) ===
@@ -78,17 +83,18 @@ TOOLS (use only if needed):
 {tools}
 </TOOLS>
 
-REASONING (internal to you; don’t expose unless asked):
-- First decide if you can answer directly from general knowledge.
-- If not, call exactly one tool that best fits the intent. Avoid chaining tools unless strictly necessary.
+REASONING (internal to you; don't expose unless asked):
+- FIRST: Check if this is a simple conversational query (greetings, non-medical questions, basic social interaction) - if so, answer directly WITHOUT using any tools.
+- SECOND: For medical questions, decide if you can answer confidently from your general medical knowledge - if so, answer directly WITHOUT using any tools.
+- THIRD: Only use tools if the medical question requires current research, specific citations, or information you're uncertain about.
 - If you decide to use a SEARCH TOOL, call HYBRID_SEARCH first to build/refresh CONTEXT from the local corpus.
-- Only if HYBRID_SEARCH is insufficient, call exactly one supplemental tool (PUBMED_SEARCH or WIKIPEDIA_SEARCH). Return the supplemental evidence; the system will handle any reranking/merging before answering.
+- Only if HYBRID_SEARCH is insufficient, call exactly one supplemental tool (PUBMED_SEARCH or WIKIPEDIA_SEARCH).
 - If tool output is low-relevance, say so briefly and answer with the best available information.
 
 OUTPUT FORMAT:
-- If you used a tool, synthesize a brief answer (3–6 sentences) from the collected CONTEXT.
+- If you used a tool, synthesize a brief answer of unnested 3–6 sentences, from the collected CONTEXT. Respond in natural language only (no JSON).
 - If you did not use a tool, answer briefly and clearly, from your own knowledge and never invent fake facts.
-- "Do NOT include citations, references, URLs, or a 'Citations:' section in your answer. "
+- Do NOT include citations, references, URLs, or a 'Citations:' section in your answer.
 - Try to use the same keywords and medical terminology of the best data points in the CONTEXT.
 
 
@@ -171,19 +177,41 @@ def build_settings_context(settings):
     }
 
 
-def build_rag_context(settings):
+def build_rag_context(settings, chat_history=None):
     """Build context string with source formatting based on user preferences"""
     # TODO: LANGUAGE SETTING IN APP
     today_iso = datetime.now().isoformat(timespec="seconds")
     # loc = locale.getdefaultlocale()
     # locale_str = f"{loc[0].replace('_', '-')}" if loc and loc[0] else "en-US"
     settings_context = build_settings_context(settings=settings)
+
+    # Format chat history for context (keep last 5 Q&A pairs = 10 messages)
+    conversation_history = ""
+    if chat_history:
+        # only user/assistant
+        relevant_messages = [
+            msg for msg in chat_history if msg.get("role") in ["user", "assistant"]
+        ]
+
+        recent_messages = relevant_messages[-10:]  # Keep last 10 messages (5 Q&A pairs)
+
+        formatted_messages = []
+        for msg in recent_messages:
+            role = msg.get("role", "")
+            content = msg.get("content", "")
+            if role == "user":
+                formatted_messages.append(f"User: {content}")
+            elif role == "assistant":
+                formatted_messages.append(f"Assistant: {content}")
+        conversation_history = "\n".join(formatted_messages)
+
     return MEDICAL_SYSTEM_CONTEXT_TEMPLATE.format(
         locale="de-DE",  # locale_str :that way the LLM knows whether to use °F vs °C, mg/dL vs mmol/L, spelling (hemoglobin vs haemoglobin), etc.
         language="English",
         today_iso=today_iso,
         user_context=settings_context["user_context"],
         response_detail_context=settings_context["response_detail_context"],
+        conversation_history=conversation_history,
     )
 
 
@@ -200,6 +228,9 @@ def build_rag_prompt(
     top_k=6,
 ):
 
+    if curr_iter == 2:
+        print()
+
     # On final iteration, fuse + slice; otherwise leave as-is
     ranked = (
         rerank_rrf(search_results, w_rrf=1.0, w_cos=1.0, top_k=top_k)
@@ -207,7 +238,7 @@ def build_rag_prompt(
         else search_results
     )
 
-    def fmt(doc: dict) -> str:
+    def fmt(doc):
         title = doc.get("title") or doc.get("id") or "Unknown"
         text = doc.get("text", "")
         score = doc.get("rrf_score")
@@ -238,7 +269,7 @@ def build_rag_prompt(
     )
 
     if curr_iter == max_iter - 1:
-        prompt += "\n\nFINAL_NOTE: This is the final iteration. You must answer now in 3–6 sentences using the provided CONTEXT if possible, otherwise your own knowledge. Output either an ANSWER_CONTEXT or ANSWER JSON block exactly as specified. Do NOT call tools."
+        prompt += "\n\nFINAL_NOTE: This is the final iteration. You must answer now in 3–6 sentences using the provided CONTEXT if possible, otherwise your own knowledge. Do NOT call tools. Respond in natural language only (no JSON)."
     return prompt, ranked
 
 

@@ -109,7 +109,7 @@ def create_medical_seed(
 if __name__ == "__main__":
     # create_medical_seed(dataset_path="MedRAG/wikipedia", seed_size=2000, output_path=f"data/med_wiki_seed", output_format="parquet")
     # create_medical_seed(dataset_path="MedRAG/wikipedia", seed_size=2000, output_path=f"data/small_seed/medical_wiki_seed_small", output_format="json", source='wikipedia')
-    #! Data is way too generalized and not focused on medical
+    #!Wikipedia Data is way too generalized and not focused on medical
     # create_medical_seed(dataset_path="MedRAG/textbooks", seed_size=2000, output_path=f"data/small_seed/medical_textbook_seed_small", output_format="json", source='textbook')
     # create_medical_seed(dataset_path="MedRAG/pubmed", seed_size=2000, output_path=f"data/small_seed/medical_pubmed_seed_small", output_format="json", source='pubmed')
     # create_medical_seed(dataset_path="MedRAG/textbooks", seed_size=60000, output_path=f"../data/medium_seed/medical_textbook_seed_medium", output_format="json", source='textbook') #max is 125,847 rows
@@ -117,8 +117,8 @@ if __name__ == "__main__":
 
     create_medical_seed(
         dataset_path="MedRAG/pubmed",
-        seed_size=6,
+        seed_size=60000,
         output_path=f"../data/medium_seed/test",
         output_format="json",
-        source="pubmed",
+        source="pubmed",  # textbook
     )  # max is 2 million rows

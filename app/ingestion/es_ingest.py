@@ -1,12 +1,13 @@
 # scripts/load_to_elasticsearch.py
 import argparse
+import hashlib
 import json
 import os
 import time
 from typing import Dict, Iterable, List
 
 import numpy as np
-from elasticsearch import Elasticsearch, helpers
+from elasticsearch import Elasticsearch, exceptions, helpers
 from sentence_transformers import SentenceTransformer
 from tqdm.auto import tqdm
 
@@ -34,6 +35,23 @@ def load_json_array(path: str) -> List[Dict]:
         return json.load(f)
 
 
+def make_doc_id(d, source_type, prefix=True, hash_if_missing=False):
+    """
+    Stable, collision-proof _id so reruns don't duplicate.
+    """
+    base = d.get("id") or d.get("title", "")
+    if not base:
+        base = hashlib.sha1(json.dumps(d, sort_keys=True).encode("utf-8")).hexdigest()[
+            :20
+        ]
+    if prefix:
+        base = f"{source_type}:{base}"
+    if hash_if_missing:
+        # optional: hash everything to avoid weird characters in IDs
+        base = hashlib.sha1(base.encode("utf-8")).hexdigest()[:20]
+    return base
+
+
 def embed_title_plus_text(title: str, text: str) -> List[float]:
     # Creates document embeddings with the same model you’ll use for queries
     combo = (title or "").strip()
@@ -46,9 +64,12 @@ def embed_title_plus_text(title: str, text: str) -> List[float]:
 def iter_docs() -> Iterable[Dict]:
     for path, source_type in SOURCES:
         for d in load_json_array(path):
-            _id = d.get("id", "")
+            _id_raw = d.get("id", "")
+            doc_id = make_doc_id(
+                d, source_type, prefix=PREFIX_IDS, hash_if_missing=False
+            )
             doc = {
-                "id": _id if not PREFIX_IDS else f"{source_type}:{_id}",
+                "id": _id_raw if not PREFIX_IDS else f"{source_type}:{_id_raw}",
                 "source_type": source_type,  # derived from file
                 "title": d.get("title", ""),
                 "text": d.get("text", ""),
@@ -57,7 +78,7 @@ def iter_docs() -> Iterable[Dict]:
                 "url": d.get("url", None),  # only if present
             }
             doc["text_vector"] = embed_title_plus_text(doc["title"], doc["text"])
-            yield doc
+            yield doc_id, doc
 
 
 def ensure_index(wipe: bool):
@@ -130,8 +151,8 @@ def es_bm25(query, k=10, source_type=None):
     return es.search(index=INDEX, body=body)["hits"]["hits"]
 
 
-def main():
-    total = 0
+def old_main():
+    total, skipped = 0, 0
     for doc in tqdm(iter_docs(), desc="Indexing to ES"):
         es.index(index=INDEX, id=doc["id"], document=doc, request_timeout=100)
         total += 1
@@ -142,6 +163,48 @@ def main():
 
     es.indices.refresh(index=INDEX)
     print(f"✅ Ingested/updated {total} docs into ES index '{INDEX}'")
+    print("Count:", es.count(index=INDEX))
+
+
+def main(verbose_skips=False):
+    total, skipped = 0, 0
+    VERBOSE_SKIPS = verbose_skips  # If you want to see the skipps
+    for doc_id, doc in tqdm(
+        iter_docs(),
+        desc="Indexing to ES",
+        unit="doc",
+        dynamic_ncols=True,
+        total=sum(len(load_json_array(p)) for p, _ in SOURCES),
+    ):
+        # skip embedding if already present
+        if es.exists(index=INDEX, id=doc_id):
+            skipped += 1
+            if VERBOSE_SKIPS:
+                print(
+                    f"↻ Skipped (exists) {doc_id} [{doc.get('source_type','?')}] {doc.get('title','')[:80]}"
+                )
+            continue
+
+        # now embed and create
+        doc["text_vector"] = embed_title_plus_text(doc["title"], doc["text"])
+        try:
+            es.create(index=INDEX, id=doc_id, document=doc, request_timeout=100)
+            print(
+                f"→ Created {doc_id} [{doc.get('source_type','?')}] {doc.get('title','')[:80]}"
+            )
+            total += 1
+        except exceptions.ConflictError:
+            skipped += 1
+            if VERBOSE_SKIPS:
+                print(
+                    f"↻ Skipped (exists) {doc_id} [{doc.get('source_type','?')}] {doc.get('title','')[:80]}"
+                )
+
+        if (total + skipped) % 500 == 0:
+            print(f"… processed {total + skipped} (indexed={total}, skipped={skipped})")
+
+    es.indices.refresh(index=INDEX)
+    print(f"✅ Done. Indexed={total}, Skipped(existing)={skipped}")
     print("Count:", es.count(index=INDEX))
 
 
@@ -175,12 +238,20 @@ if __name__ == "__main__":
     # unify heterogeneous data under a common shape;can filter by source_type later.
     SOURCES = [
         # ("/Users/jordanharris/Code/wiki_rag/data/small_seed/medical_wiki_seed_small.json",     "wikipedia"),
+        # (
+        #    "/Users/jordanharris/Code/wiki_rag/data/small_seed/medical_textbook_seed_small.json",
+        #    "textbook",
+        # ),
+        # (
+        #    "/Users/jordanharris/Code/wiki_rag/data/small_seed/medical_pubmed_seed_small.json",
+        #    "pubmed",
+        # ),
         (
-            "/Users/jordanharris/Code/wiki_rag/data/small_seed/medical_textbook_seed_small.json",
+            "/Users/jordanharris/Code/ResidentRAG/data/medium_seed/medical_textbook_seed_medium.json",
             "textbook",
         ),
         (
-            "/Users/jordanharris/Code/wiki_rag/data/small_seed/medical_pubmed_seed_small.json",
+            "/Users/jordanharris/Code/ResidentRAG/data/medium_seed/medical_pubmed_seed_medium.json",
             "pubmed",
         ),
     ]
@@ -207,7 +278,12 @@ if __name__ == "__main__":
     print(f"🔧 Connecting to ES at {ES_URL} | index='{INDEX}' | wipe={args.wipe}")
     wait_for_es(es)
     ensure_index(wipe=args.wipe)
-    main()
+    try:
+        main(verbose_skips=False)
+    except KeyboardInterrupt:
+        es.indices.refresh(index=INDEX)
+        print("\n⏹️ Cancelled by user.")
+        print("Count:", es.count(index=INDEX))
 
     print([d["_source"]["title"] for d in es_bm25("gross anatomy")])
     print([d["_source"]["title"] for d in es_knn("gross anatomy")])
