@@ -19,11 +19,37 @@ Medical knowledge is vast, scattered, and often inaccessible. Clinicians, resear
 ## 🏗️ System Architecture
 
 ```
-User ↔ Streamlit ↔ LLM
-        ↘
-Elasticsearch ← Hybrid Search → Qdrant
-        ↗
-PostgreSQL (feedback) → Grafana
+User
+  |
+  v
+Streamlit UI
+  |
+  v
+LLM / Agentic Router
+  |
+  v
+Hybrid Tool (FIRST)
+  ├─ Elasticsearch
+  └─ Qdrant
+  |
+  v
+(Optional) Wikipedia Tool
+(Optional) PubMed Tool
+  |
+  v
+LLM Synthesis (grounded answer)
+  |
+  v
+Streamlit (renders answer + citations)
+  |
+  v
+User Feedback (thumbs up/down, notes)
+  |
+  v
+PostgreSQL (feedback table)
+  |
+  v
+Grafana (visualize ratings, CTR, QA health)
 ```
 
 ---
@@ -32,7 +58,7 @@ PostgreSQL (feedback) → Grafana
 
 - **Docker** and **Docker Compose**
 - **OpenAI API key**
-- (Optional for local dev): Python 3.10+ and `pip`
+- (Optional for localp dev): Python 3.10+ and `pip`
 
 ---
 
@@ -43,6 +69,9 @@ Copy the provided `.env.example` file and fill it out with your own API keys and
 ```bash
 cp .env.example .env
 # Then edit .env with your OpenAI API key, email for PubMed access, etc.
+
+#optional: for local testing and running outside f Docker
+pip install -r requirements.txt
 ```
 
 The `.env.example` file contains all necessary environment variables with placeholder values.
@@ -207,7 +236,6 @@ docker compose logs -f streamlit
 
 ![System Logs](/app/images/read_me/streamlit_logs.png)
 
-*Shows hybrid search results, tool selection logic, and feedback storage operations.*
 
 **📸 Screenshot Placeholder:** *Terminal output of evaluation metrics*
 
