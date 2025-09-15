@@ -4,6 +4,16 @@
 
 Evidence-based medical answers with citations from **PubMed**, **medical textbooks**, and **Wikipedia** using a hybrid retrieval-augmented generation (RAG) system.
 
+## 📋 Table of Contents
+- [Problem Description](#problem-description)
+- [System Architecture](#system-architecture)
+- [Quick Start](#quick-start-docker--recommended)
+- [Data Ingestion](#data-download--seed--ingest)
+- [Usage](#app-usage)
+- [Monitoring](#monitoring-grafana)
+- [Technologies](#agentic-tool-technologies)
+
+
 ---
 
 ## ❓ Problem Description
@@ -82,7 +92,7 @@ The `.env.example` file contains all necessary environment variables with placeh
 
 ```bash
 # 1) Clone
-git clone https://github.com/<you>/ResidentRAG
+git clone https://github.com/dvrk-dvys/ResidentRag
 cd ResidentRAG
 
 # 2) Env
@@ -133,7 +143,7 @@ python scripts/load_dataset.py
 #   seed_size=60000, output_path="data/medium_seed/test", output_format="json", source="pubmed")
 ```
 
-**📸 Screenshot Placeholder:** *Dataset creation and download progress*
+![Load Data from HuggingFace](/app/images/read_me/Load_data_from_HF.png)
 
 **2) Ingest to Elasticsearch**
 
@@ -145,7 +155,7 @@ export ES_URL=http://localhost:9200
 python scripts/load_to_elasticsearch.py --wipe=false
 ```
 
-**📸 Screenshot Placeholder:** *Elasticsearch index creation log*
+![Upsert Data ro ElasticSearch](/app/images/read_me/ES_INGEST.png)
 
 **3) Ingest to Qdrant**
 
@@ -156,7 +166,7 @@ export QDRANT_URL=http://localhost:6333
 python scripts/load_to_qdrant.py
 ```
 
-**📸 Screenshot Placeholder:** *Qdrant vector upsert progress*
+![Upsert Data to Qdrant](/app/images/read_me/QDRANT_INGEST.png)
 
 > You can switch between your `small_seed` and `medium_seed` files by editing the `SOURCES` arrays in those two ingest scripts.
 
@@ -171,7 +181,8 @@ python scripts/load_to_qdrant.py
 
 ![User Feedback Collection](/app/images/read_me/user_review_pic.png)
 
-*Feedback is automatically saved to PostgreSQL for analytics and quality monitoring.*
+*Feedback is automatically saved to PostgreSQL DB for analytics and quality monitoring.*
+![User Feedback Collection](/app/images/read_me/pg_db.png)
 
 ---
 
@@ -238,6 +249,21 @@ docker compose logs -f streamlit
 
 
 **📸 Screenshot Placeholder:** *Terminal output of evaluation metrics*
+
+
+```markdown
+## 🔌 Model Context Protocol (MCP) Integration
+
+A *[FastMCP server](https://gofastmcp.com/getting-started/welcome)* is fully implemented as a **proof of concept** for future extensibility, though currently commented out since the agent's primary function is focused on medical information retrieval. The *[Model Context Protocol](https://www.philschmid.de/mcp-introduction)* architecture enables *seamless tool orchestration* and *inter-agent communication*, positioning ResidentRAG for advanced capabilities like:
+
+- 📧 *Automated email notifications* to healthcare teams
+- 🏥 *Electronic health record (EHR) integration* for patient-specific queries  
+- 🔬 *Multi-modal data retrieval* from imaging systems, lab databases, and clinical decision support tools
+- 🤖 *Agent-to-agent collaboration* where ResidentRAG could consult specialized medical AI agents (radiology AI, pharmacology expert, etc.)
+- ⚡ *Real-time clinical workflow integration* through hospital information systems
+
+The MCP server foundation is ready to unlock these *enterprise-grade medical AI capabilities* as the system evolves beyond its current search-focused implementation. This architectural decision ensures ResidentRAG can scale from a research tool to a comprehensive *clinical decision support platform*.
+```
 
 ---
 

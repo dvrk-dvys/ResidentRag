@@ -112,13 +112,8 @@ if __name__ == "__main__":
     #!Wikipedia Data is way too generalized and not focused on medical
     # create_medical_seed(dataset_path="MedRAG/textbooks", seed_size=2000, output_path=f"data/small_seed/medical_textbook_seed_small", output_format="json", source='textbook')
     # create_medical_seed(dataset_path="MedRAG/pubmed", seed_size=2000, output_path=f"data/small_seed/medical_pubmed_seed_small", output_format="json", source='pubmed')
-    # create_medical_seed(dataset_path="MedRAG/textbooks", seed_size=60000, output_path=f"../data/medium_seed/medical_textbook_seed_medium", output_format="json", source='textbook') #max is 125,847 rows
-    # create_medical_seed(dataset_path="MedRAG/pubmed", seed_size=600000, output_path=f"../data/medium_seed/medical_pubmed_seed_medium", output_format="json", source='pubmed')  #max is 2 million rows
+    #create_medical_seed(dataset_path="MedRAG/textbooks", seed_size=60000, output_path=f"../data/medium_seed/medical_textbook_seed_medium", output_format="json", source='textbook') #max is 125,847 rows
+    #create_medical_seed(dataset_path="MedRAG/pubmed", seed_size=600000, output_path=f"../data/medium_seed/medical_pubmed_seed_medium", output_format="json", source='pubmed')  #max is 2 million rows
+    create_medical_seed(dataset_path="MedRAG/textbooks", seed_size=60, output_path=f"../data/test_seed/medical_textbook_seed_medium", output_format="json", source='textbook') #max is 125,847 rows
+    create_medical_seed(dataset_path="MedRAG/pubmed", seed_size=60, output_path=f"../data/test_seed/medical_pubmed_seed_medium", output_format="json", source='pubmed')  #max is 2 million rows
 
-    create_medical_seed(
-        dataset_path="MedRAG/pubmed",
-        seed_size=60000,
-        output_path=f"../data/medium_seed/test",
-        output_format="json",
-        source="pubmed",  # textbook
-    )  # max is 2 million rows

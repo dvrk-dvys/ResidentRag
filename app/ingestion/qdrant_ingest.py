@@ -186,13 +186,21 @@ if __name__ == "__main__":
     SOURCES = [
         # ("/Users/jordanharris/Code/wiki_rag/data/small_seed/medical_wiki_seed_small.json",     "wikipedia"),
         (
-            "/Users/jordanharris/Code/ResidentRAG/data/small_seed/medical_textbook_seed_small.json",
+            "data/test_seed/medical_textbook_seed_medium.json",
             "textbook",
         ),
         (
-            "/Users/jordanharris/Code/ResidentRAG/data/small_seed/medical_pubmed_seed_small.json",
+            "data/test_seed/medical_pubmed_seed_medium.json",
             "pubmed",
         ),
+        #(
+        #    "/Users/jordanharris/Code/ResidentRAG/data/small_seed/medical_textbook_seed_small.json",
+        #    "textbook",
+        #),
+        #(
+        #    "/Users/jordanharris/Code/ResidentRAG/data/small_seed/medical_pubmed_seed_small.json",
+        #    "pubmed",
+        #),
         # (
         #    "/Users/jordanharris/Code/ResidentRAG/data/medium_seed/medical_textbook_seed_medium.json",
         #    "textbook",

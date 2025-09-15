@@ -40,7 +40,7 @@ def get_qdrant_client(local=False):
 
 
 if __name__ == "__main__":
-    ground_truth_path = "//data/evaluation/ground_truth.json"
+    ground_truth_path = "./data/evaluation/ground_truth.json"
     with open(ground_truth_path, "r", encoding="utf-8") as f:
         gt_raw = json.load(f)
     gt = [{"query": row["question"], "doc_id": row["doc_id"]} for row in gt_raw]

@@ -246,12 +246,20 @@ if __name__ == "__main__":
         #    "/Users/jordanharris/Code/wiki_rag/data/small_seed/medical_pubmed_seed_small.json",
         #    "pubmed",
         # ),
+        #(
+        #    "/Users/jordanharris/Code/ResidentRAG/data/medium_seed/medical_textbook_seed_medium.json",
+        #    "textbook",
+        #),
+        #(
+        #    "/Users/jordanharris/Code/ResidentRAG/data/medium_seed/medical_pubmed_seed_medium.json",
+        #    "pubmed",
+        #),
         (
-            "/Users/jordanharris/Code/ResidentRAG/data/medium_seed/medical_textbook_seed_medium.json",
+            "data/test_seed/medical_textbook_seed_medium.json",
             "textbook",
         ),
         (
-            "/Users/jordanharris/Code/ResidentRAG/data/medium_seed/medical_pubmed_seed_medium.json",
+            "data/test_seed/medical_pubmed_seed_medium.json",
             "pubmed",
         ),
     ]
