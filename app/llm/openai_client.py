@@ -310,10 +310,10 @@ if __name__ == "__main__":
     }
 
     test_query = [
-        "Hello Howre you?",
+        # "Hello Howre you?",
         "What are the connections between prolonged corticosteroid use and femoral avascular necrosis?",
-        "What are the symptoms of a heart attack?",
-        "What is avascular necrosis?",
+        # "What are the symptoms of a heart attack?",
+        # "What is avascular necrosis?",
     ]
 
     for t in test_query:

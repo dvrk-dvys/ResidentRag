@@ -179,6 +179,14 @@ python scripts/load_to_qdrant.py
 * See **citations** under the answer
 * Give 👍/👎 **feedback** (stored in PostgreSQL)
 
+### 📖 Citation Links & References
+
+ResidentRAG provides clickable citations linking directly to PubMed articles and Wikipedia pages:
+
+![Citation Links Example](/app/images/read_me/output_with_citation_links.png)
+
+*Real-time access to peer-reviewed medical literature and authoritative sources.*
+
 ![User Feedback Collection](/app/images/read_me/user_review_pic.png)
 
 *Feedback is automatically saved to PostgreSQL DB for analytics and quality monitoring.*
@@ -247,6 +255,12 @@ docker compose logs -f streamlit
 
 ![System Logs](/app/images/read_me/streamlit_logs.png)
 
+### 🔍 Tool Search Debug View
+
+Watch the hybrid search and tool selection process in action:
+
+https://github.com/user-attachments/assets/tool_search_video.mp4
+
 
 **📸 Screenshot Placeholder:** *Terminal output of evaluation metrics*
 
@@ -257,7 +271,7 @@ docker compose logs -f streamlit
 A *[FastMCP server](https://gofastmcp.com/getting-started/welcome)* is fully implemented as a **proof of concept** for future extensibility, though currently commented out since the agent's primary function is focused on medical information retrieval. The *[Model Context Protocol](https://www.philschmid.de/mcp-introduction)* architecture enables *seamless tool orchestration* and *inter-agent communication*, positioning ResidentRAG for advanced capabilities like:
 
 - 📧 *Automated email notifications* to healthcare teams
-- 🏥 *Electronic health record (EHR) integration* for patient-specific queries  
+- 🏥 *Electronic health record (EHR) integration* for patient-specific queries
 - 🔬 *Multi-modal data retrieval* from imaging systems, lab databases, and clinical decision support tools
 - 🤖 *Agent-to-agent collaboration* where ResidentRAG could consult specialized medical AI agents (radiology AI, pharmacology expert, etc.)
 - ⚡ *Real-time clinical workflow integration* through hospital information systems

@@ -30,8 +30,8 @@ def rerank_rrf(results, w_rrf=1.0, w_cos=1.0, top_k=None):
     rrf_vals = [d["rrf_score"] for d in results if "rrf_score" in d]
     cos_vals = [d["cos_sim_score"] for d in results if "cos_sim_score" in d]
 
-    rrf_min, rrf_max = min(rrf_vals), max(rrf_vals) if rrf_vals else (0, 1)
-    cos_min, cos_max = min(cos_vals), max(cos_vals) if cos_vals else (0, 1)
+    rrf_min, rrf_max = (min(rrf_vals), max(rrf_vals)) if rrf_vals else (0, 1)
+    cos_min, cos_max = (min(cos_vals), max(cos_vals)) if cos_vals else (0, 1)
 
     ranked = []
     for d in results:

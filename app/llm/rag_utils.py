@@ -234,7 +234,7 @@ def build_rag_prompt(
     # On final iteration, fuse + slice; otherwise leave as-is
     ranked = (
         rerank_rrf(search_results, w_rrf=1.0, w_cos=1.0, top_k=top_k)
-        if curr_iter == max_iter - 1
+        if curr_iter == max_iter - 1 and search_results
         else search_results
     )
 
