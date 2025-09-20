@@ -184,11 +184,11 @@ __pycache__/
 # VS Code
 **/.vscode/
 
-# Qdrant local storage
-data/qdrant_storage/
+# Qdrant local storage ???
+#data/qdrant_storage/
 
-# Elastic Search local storage
-data/esdata/
+# Elastic Search local storage ??? teasting to allow these directories for the git sturcuture but not uploading the contents
+#data/esdata/
 
 # Ignore any *.dbs files or .dbs directory
 *.db
