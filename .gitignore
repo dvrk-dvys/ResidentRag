@@ -13,9 +13,16 @@
 *.parquet
 **/kubectl
 
-# Large data files
-data/
-*.json
+# ---- Data blobs (ignore file contents, keep folders via .gitkeep) ----
+# Don't ignore the data folder itself
+# Ignore typical large data inside data/
+data/**/*.{csv,parquet,pt,pth,npy,wav,zip,flac,db}
+
+# Ignore JSONs only inside data/, not globally
+data/**/*.json
+
+# Keep placeholder files so folders exist in Git
+!data/**/.gitkeep
 
 # Environments
 .env
@@ -187,6 +194,7 @@ data/esdata/
 *.db
 .db/
 
+**/kubectl
 
 .claude
 .anthropic/
