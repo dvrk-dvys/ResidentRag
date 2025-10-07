@@ -7,7 +7,7 @@ elasticsearch==8.19.0
 qdrant-client==1.15.1
 tiktoken==0.11.0
 langchain==0.3.10
-langchain-text-splitters==0.3.2
+langchain-text-splitters==1.0.0a1
 
 # Embeddings / rerank
 sentence-transformers==3.0.1
