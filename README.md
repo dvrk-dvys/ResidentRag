@@ -2,7 +2,7 @@
 
 ![ResidentRAG Medical Assistant](app/images/streamlit/medibot.jpg)
 
-Evidence-based medical answers with citations from **PubMed**, **medical textbooks**, and **Wikipedia** using a hybrid retrieval-augmented generation (RAG) system.
+Evidence-based medical answers with citations from **PubMed**, **medical textbooks**, and **Wikipedia** using a hybrid retrieval-augmented generation (RAG) system — combining **lexical/BM25 search** (Elasticsearch) with **vector/hyperspace embedding search** (Qdrant).
 
 ## 📋 Table of Contents
 - [Problem Description](#problem-description)
@@ -20,9 +20,22 @@ Evidence-based medical answers with citations from **PubMed**, **medical textboo
 
 Medical knowledge is vast, scattered, and often inaccessible. Clinicians, researchers, and patients need **concise, accurate, cited answers** quickly. ResidentRAG solves this by:
 
-- Combining **semantic search** (Qdrant vectors) with **lexical search** (Elasticsearch BM25)
+- Combining **semantic search** (Qdrant vectors) with **lexical search** (Elasticsearch BM25) — see [What "Hybrid" Means](#-what-hybrid-means)
 - Using **Reciprocal Rank Fusion (RRF)** to rerank results
 - Iteratively deciding whether to answer directly, search local corpora, or escalate to using agentic Tools to retreive, parse & chunk, then rerank external data sources (Wikipedia and PubMed)
+
+### 🔀 What "Hybrid" Means
+
+| | 🔵 Elasticsearch · BM25 | 🟣 Qdrant · Vector Search |
+|---|---|---|
+| **Mechanism** | Counts token matches weighted by rarity (BM25/TF-IDF) | Nearest-neighbour search in 384-dimensional space |
+| **Matches on** | Exact character strings / tokens | Semantic meaning — synonyms, paraphrases, concepts |
+| **Query Example** | `"heart attack"` → finds docs containing `"heart attack"` | `"heart attack"` → finds docs about `"myocardial infarction"` (same condition, zero shared characters) |
+| **Encoding** | No encoding — raw text index | `all-MiniLM-L6-v2` converts text → 384 floats |
+| **Search algorithm** | BM25 `multi_match` | HNSW approximate nearest-neighbour (cosine similarity) |
+| **Core function** | `search_elasticsearch()` · `es_search.py:54` | `search_qdrant()` · `qdrant_search.py:46` |
+
+**⚖️ RRF Fusion** (`hybrid_search.py:149`): both engines return 50 candidates → score = `1/(60+rank)`, Qdrant weighted **2×** over ES → top-k merged & re-ranked.
 
 > *"This application implements an agent-based retrieval-augmented generation (RAG) system. The agent iterates up to three times, making decisions at each step about the best strategy to answer the user’s question. On the first pass, it determines whether the query can be answered directly by the base OpenAI LLM. If additional knowledge is needed, it searches the local knowledge base—data pre-upserted into Elasticsearch (lexical search) and Qdrant (vector search). If the local knowledge base is insufficient, and official citations are required, the agent escalates to external tools: the Wikipedia API and PubMed via Bio.Entrez. These external sources are retrieved, chunked, searched, and then reranked together with the local hybrid search results using Reciprocal Rank Fusion (RRF). The system finally returns a concise, medically informed answer with verified citations, ensuring the response is grounded in real scientific literature and documentation."*
 
@@ -39,8 +52,8 @@ LLM / Agentic Router
   |
   v
 Hybrid Tool (FIRST)
-  ├─ Elasticsearch
-  └─ Qdrant
+  ├─ Elasticsearch        (lexical / BM25 search)
+  └─ Qdrant               (vector / hyperspace embedding search)
   |
   v
 (Optional) Wikipedia Tool
@@ -145,7 +158,7 @@ python scripts/load_dataset.py
 
 ![Load Data from HuggingFace](/app/images/read_me/Load_data_from_HF.png)
 
-**2) Ingest to Elasticsearch**
+**2) Ingest to Elasticsearch** *(lexical / BM25 index)*
 
 Script: `scripts/load_to_elasticsearch.py`
 
@@ -157,7 +170,7 @@ python scripts/load_to_elasticsearch.py --wipe=false
 
 ![Upsert Data ro ElasticSearch](/app/images/read_me/ES_INGEST.png)
 
-**3) Ingest to Qdrant**
+**3) Ingest to Qdrant** *(vector / hyperspace embedding index)*
 
 Script: `scripts/load_to_qdrant.py`
 
@@ -214,13 +227,22 @@ ResidentRAG logs feedback into dockerized PostgreSQL DB, which is then used as t
 ## 🛠️ Agentic Tool Technologies (Hybrid Search Tool, Wikipedia Search Tool, PubMed Search Tool)
 
 **Core Search Technologies:**
-- [**Elasticsearch**](https://www.elastic.co/guide/en/elasticsearch/reference/current/index.html) - Powers lexical/BM25 search
-- [**Qdrant**](https://qdrant.tech/documentation/) - Powers semantic vector search
+- 🔵 [**Elasticsearch**](https://www.elastic.co/guide/en/elasticsearch/reference/current/index.html) — lexical / BM25 search (character-string token matching)
+- 🟣 [**Qdrant**](https://qdrant.tech/documentation/) — vector / hyperspace embedding search (semantic similarity)
 
-**Hybrid Search Retriever:**
-1. **Dual Retrieval**: Queries both Elasticsearch (keyword matching) and Qdrant (semantic similarity) simultaneously
-2. **Reciprocal Rank Fusion (RRF)**: Combines and reranks results from both search engines
-3. **Score Normalization**: Balances lexical and semantic relevance scores
+**Hybrid Search Retriever** (`app/search/hybrid_search.py`):
+1. 🔵 **Elasticsearch BM25** — `get_es_ids()` · `hybrid_search.py:109`
+   - `multi_match` with `best_fields` tokenizes the query and scores docs by term frequency × inverse document frequency
+   - Pure character-string token matching; no language model, no semantic understanding
+   - PubMed docs boost `title^3`; textbook/wiki docs boost `text^3`; `fuzziness: AUTO` allows near-matches
+2. 🟣 **Qdrant Vector Search** — `get_qdrant_ids()` · `hybrid_search.py:35`
+   - Query → `all-MiniLM-L6-v2` → 384-dimensional normalized float vector
+   - HNSW index (`hnsw_ef=96`) finds approximate nearest neighbours by cosine similarity
+   - Matches on *meaning*, not characters — synonyms and paraphrases score high
+3. ⚖️ **Weighted RRF Fusion** — `weighted_rrf_fuse()` · `hybrid_search.py:149`
+   - Top-50 IDs from each engine merged: `score = Σ weight × 1/(60+rank)`
+   - Qdrant weight=**2.0**, ES weight=**1.0** → semantic signal dominates
+   - Documents appearing high in *both* lists float to the top; top-k returned and hydrated via ES `mget`
 
 **External APIs implemented in Tools:**
 - [**PubMed API (Bio.Entrez)**](https://people.duke.edu/~ccc14/pcfb/biopython/BiopythonEntrez.html) - Powers the `pubmed_search` tool for accessing NCBI's biomedical literature

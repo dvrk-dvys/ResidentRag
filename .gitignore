@@ -198,3 +198,6 @@ __pycache__/
 
 .claude
 .anthropic/
+
+# Claude Code memory system (tool artifact, not project code)
+memory/
