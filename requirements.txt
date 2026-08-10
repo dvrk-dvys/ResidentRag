@@ -18,7 +18,7 @@ scipy==1.11.4
 scikit-learn==1.5.0
 
 # Web/UI
-streamlit==1.49.1
+streamlit==1.54.0
 streamlit-chat
 streamlit-option-menu
 prometheus-client==0.22.1
